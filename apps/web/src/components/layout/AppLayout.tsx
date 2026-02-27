@@ -1,4 +1,4 @@
-import { Outlet, useEffect } from 'react'
+import { Outlet } from 'react-router-dom'
 import { GuildSidebar } from './GuildSidebar'
 import { ContextMenu } from '@/components/ui/ContextMenu'
 import { ModalRenderer } from './ModalRenderer'
