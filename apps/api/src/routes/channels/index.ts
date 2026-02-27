@@ -451,6 +451,56 @@ export default async function channelRoutes(app: FastifyInstance) {
     return reply.status(204).send()
   })
 
+  // POST /channels/:channelId/messages/:messageId/threads - create thread from message
+  app.post('/:channelId/messages/:messageId/threads', { preHandler: authenticate }, async (request, reply) => {
+    const { channelId, messageId } = request.params as { channelId: string; messageId: string }
+    const { name, autoArchiveDuration = 1440 } = z.object({
+      name: z.string().min(1).max(100).default('Thread'),
+      autoArchiveDuration: z.number().optional(),
+    }).parse(request.body)
+
+    const canAccess = await canAccessChannel(channelId, request.userId)
+    if (!canAccess) return reply.status(403).send({ code: 403, message: 'Missing access' })
+
+    const message = await prisma.message.findFirst({
+      where: { id: messageId, channelId, deletedAt: null },
+    })
+    if (!message) return reply.status(404).send({ code: 404, message: 'Unknown message' })
+
+    const parentChannel = await prisma.channel.findUnique({ where: { id: channelId } })
+    if (!parentChannel) return reply.status(404).send({ code: 404, message: 'Unknown channel' })
+
+    const thread = await prisma.channel.create({
+      data: {
+        id: generateId(),
+        type: 'PUBLIC_THREAD' as any,
+        guildId: parentChannel.guildId,
+        name,
+        parentId: channelId,
+        ownerId: request.userId,
+        threadMetadata: {
+          archived: false,
+          autoArchiveDuration,
+          archiveTimestamp: null,
+          locked: false,
+          createTimestamp: new Date().toISOString(),
+        },
+        messageCount: 0,
+        memberCount: 1,
+      },
+    })
+
+    const serialized = serializeChannel(thread)
+
+    await publishEvent({
+      type: 'THREAD_CREATE',
+      guildId: parentChannel.guildId,
+      data: serialized,
+    })
+
+    return reply.status(201).send(serialized)
+  })
+
   // PUT /channels/:channelId/messages/:messageId/reactions/:emoji/@me - add reaction
   app.put('/:channelId/messages/:messageId/reactions/:emoji/@me', { preHandler: authenticate }, async (request, reply) => {
     const { channelId, messageId, emoji } = request.params as {

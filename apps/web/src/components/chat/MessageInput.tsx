@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Tooltip } from '../ui/Tooltip';
 import { Avatar } from '../ui/Avatar';
 import { EmojiPicker } from '../ui/EmojiPicker';
+import { GifPicker } from '../ui/GifPicker';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth';
 import { useMessagesStore } from '../../stores/messages';
@@ -53,6 +54,7 @@ export function MessageInput({
   const { addMessage } = useMessagesStore();
   const [content, setContent] = useState('');
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [showGifPicker, setShowGifPicker] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [mentionState, setMentionState] = useState<{
     type: '@' | '#'; query: string; start: number; selectedIdx: number;
@@ -377,15 +379,31 @@ export function MessageInput({
           {isUploading && (
             <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           )}
-          <Tooltip content="Open GIF picker" side="top">
-            <button className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors font-bold text-xs">
-              GIF
-            </button>
-          </Tooltip>
+          <div className="relative">
+            <Tooltip content="Open GIF picker" side="top">
+              <button
+                onClick={() => { setShowGifPicker(v => !v); setShowEmojiPicker(false); }}
+                className={`w-6 h-6 flex items-center justify-center transition-colors font-bold text-xs ${showGifPicker ? 'text-brand' : 'text-text-muted hover:text-text-header'}`}
+              >
+                GIF
+              </button>
+            </Tooltip>
+            {showGifPicker && (
+              <div className="absolute bottom-full right-0 mb-2 z-50">
+                <GifPicker
+                  onSelect={(url) => {
+                    setContent(prev => prev ? prev + ' ' + url : url);
+                    textareaRef.current?.focus();
+                  }}
+                  onClose={() => setShowGifPicker(false)}
+                />
+              </div>
+            )}
+          </div>
           <div className="relative">
             <Tooltip content="Open Emoji Picker" side="top">
               <button
-                onClick={() => setShowEmojiPicker(v => !v)}
+                onClick={() => { setShowEmojiPicker(v => !v); setShowGifPicker(false); }}
                 className={`w-6 h-6 flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-brand' : 'text-text-muted hover:text-text-header'}`}
               >
                 <Smile size={18} />

@@ -64,12 +64,12 @@ export async function rotateSession(
   })
 
   if (!session || session.expiresAt < new Date()) {
-    if (session) await prisma.session.delete({ where: { id: session.id } })
+    if (session) await prisma.session.deleteMany({ where: { id: session.id } })
     throw new Error('Invalid or expired refresh token')
   }
 
-  // Delete old session
-  await prisma.session.delete({ where: { id: session.id } })
+  // Delete old session (use deleteMany to avoid crash on concurrent requests)
+  await prisma.session.deleteMany({ where: { id: session.id } })
 
   // Create new session
   return createSession(payload.userId)

@@ -6,7 +6,7 @@ import { publishEvent } from '../../lib/redis.js'
 import { serializeUser } from '../../lib/serialize.js'
 
 export default async function inviteRoutes(app: FastifyInstance) {
-  // GET /:code - get invite info (public)
+  // GET /:code - get invite info (public, also resolves guild vanity URL codes)
   app.get('/:code', async (request, reply) => {
     const { code } = request.params as { code: string }
 
@@ -22,7 +22,44 @@ export default async function inviteRoutes(app: FastifyInstance) {
       },
     })
 
-    if (!invite) return reply.status(404).send({ code: 404, message: 'Unknown invite' })
+    // If no regular invite, check if it's a guild vanity URL code
+    if (!invite) {
+      const vanityGuild = await prisma.guild.findFirst({
+        where: { vanityCode: code },
+        include: {
+          _count: { select: { members: true } },
+          channels: { where: { type: 'GUILD_TEXT' }, orderBy: { position: 'asc' }, take: 1 },
+        },
+      })
+
+      if (!vanityGuild) return reply.status(404).send({ code: 404, message: 'Unknown invite' })
+
+      return reply.send({
+        code,
+        guild: {
+          id: vanityGuild.id,
+          name: vanityGuild.name,
+          icon: vanityGuild.icon,
+          banner: vanityGuild.banner,
+          description: vanityGuild.description,
+          features: vanityGuild.features,
+          verificationLevel: vanityGuild.verificationLevel,
+          nsfwLevel: vanityGuild.nsfwLevel,
+          premiumSubscriptionCount: 0,
+          approximateMemberCount: vanityGuild._count.members,
+        },
+        channel: vanityGuild.channels[0]
+          ? { id: vanityGuild.channels[0].id, name: vanityGuild.channels[0].name, type: 0 }
+          : null,
+        expiresAt: null,
+        uses: 0,
+        maxUses: 0,
+        maxAge: 0,
+        temporary: false,
+        createdAt: new Date().toISOString(),
+      })
+    }
+
     if (invite.expiresAt && invite.expiresAt < new Date()) {
       return reply.status(404).send({ code: 404, message: 'Invite has expired' })
     }
@@ -53,26 +90,43 @@ export default async function inviteRoutes(app: FastifyInstance) {
     })
   })
 
-  // POST /:code - use/join invite
+  // POST /:code - use/join invite (also handles vanity URL codes)
   app.post('/:code', { preHandler: authenticate }, async (request, reply) => {
     const { code } = request.params as { code: string }
 
-    const invite = await prisma.guildInvite.findUnique({
+    let invite = await prisma.guildInvite.findUnique({
       where: { code },
       include: { guild: { include: { roles: true } } },
     })
 
-    if (!invite) return reply.status(404).send({ code: 404, message: 'Unknown invite' })
-    if (invite.expiresAt && invite.expiresAt < new Date()) {
-      return reply.status(404).send({ code: 404, message: 'Invite has expired' })
-    }
-    if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
-      return reply.status(404).send({ code: 404, message: 'Invite has reached max uses' })
+    // If no regular invite, check vanity URL
+    let guildId: string
+    let everyoneRole: { id: string } | undefined
+    let isVanity = false
+
+    if (!invite) {
+      const vanityGuild = await prisma.guild.findFirst({
+        where: { vanityCode: code },
+        include: { roles: true },
+      })
+      if (!vanityGuild) return reply.status(404).send({ code: 404, message: 'Unknown invite' })
+      guildId = vanityGuild.id
+      everyoneRole = vanityGuild.roles.find((r) => r.name === '@everyone')
+      isVanity = true
+    } else {
+      if (invite.expiresAt && invite.expiresAt < new Date()) {
+        return reply.status(404).send({ code: 404, message: 'Invite has expired' })
+      }
+      if (invite.maxUses > 0 && invite.uses >= invite.maxUses) {
+        return reply.status(404).send({ code: 404, message: 'Invite has reached max uses' })
+      }
+      guildId = invite.guildId
+      everyoneRole = invite.guild.roles.find((r) => r.name === '@everyone')
     }
 
     // Check if already a member
     const existing = await prisma.guildMember.findUnique({
-      where: { guildId_userId: { guildId: invite.guildId, userId: request.userId } },
+      where: { guildId_userId: { guildId, userId: request.userId } },
     })
     if (existing) {
       return reply.status(400).send({ code: 400, message: 'Already a member of this guild' })
@@ -80,30 +134,30 @@ export default async function inviteRoutes(app: FastifyInstance) {
 
     // Check if banned
     const ban = await prisma.guildBan.findUnique({
-      where: { guildId_userId: { guildId: invite.guildId, userId: request.userId } },
+      where: { guildId_userId: { guildId, userId: request.userId } },
     })
     if (ban) return reply.status(403).send({ code: 403, message: 'You are banned from this guild' })
-
-    const everyoneRole = invite.guild.roles.find((r) => r.name === '@everyone')
 
     const member = await prisma.$transaction(async (tx) => {
       const m = await tx.guildMember.create({
         data: {
           id: generateId(),
-          guildId: invite.guildId,
+          guildId,
           userId: request.userId,
           roles: everyoneRole ? [everyoneRole.id] : [],
         },
         include: { user: true },
       })
 
-      await tx.guildInvite.update({
-        where: { code },
-        data: { uses: { increment: 1 } },
-      })
+      if (!isVanity) {
+        await tx.guildInvite.update({
+          where: { code },
+          data: { uses: { increment: 1 } },
+        })
+      }
 
       await tx.guild.update({
-        where: { id: invite.guildId },
+        where: { id: guildId },
         data: { memberCount: { increment: 1 } },
       })
 
@@ -112,7 +166,7 @@ export default async function inviteRoutes(app: FastifyInstance) {
 
     // Get full guild data
     const guild = await prisma.guild.findUnique({
-      where: { id: invite.guildId },
+      where: { id: guildId },
       include: {
         channels: { orderBy: { position: 'asc' } },
         roles: { orderBy: { position: 'asc' } },
@@ -123,9 +177,9 @@ export default async function inviteRoutes(app: FastifyInstance) {
 
     await publishEvent({
       type: 'GUILD_MEMBER_ADD',
-      guildId: invite.guildId,
+      guildId,
       data: {
-        guildId: invite.guildId,
+        guildId,
         user: serializeUser(member.user),
         roles: member.roles,
         joinedAt: member.joinedAt.toISOString(),

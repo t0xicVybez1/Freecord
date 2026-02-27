@@ -225,9 +225,9 @@ export function EmojiPicker({ onSelect, guildId, onClose }: EmojiPickerProps) {
 
   const displayCategory = allCategories.find(c => c.id === activeCategory)
 
-  const renderEmoji = (emoji: string) => (
+  const renderEmoji = (emoji: string, idx: number) => (
     <button
-      key={emoji}
+      key={`${idx}-${emoji}`}
       onClick={() => handleSelect(emoji)}
       className="w-8 h-8 flex items-center justify-center hover:bg-white/10 rounded text-xl transition-colors"
       title={emoji}
