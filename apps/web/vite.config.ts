@@ -6,7 +6,11 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { '@': path.resolve(__dirname, './src') } },
   envDir: path.resolve(__dirname, '../../'),
-  server: { port: 5173, host: true },
+  server: {
+    port: 5173,
+    host: true,
+    hmr: { clientPort: 5173 },
+  },
   build: {
     target: 'esnext',
     rollupOptions: {
