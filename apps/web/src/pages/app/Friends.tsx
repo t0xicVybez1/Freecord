@@ -50,9 +50,10 @@ export default function FriendsPage() {
       setAddStatus('success')
       setAddMsg(`Friend request sent to ${addUsername}!`)
       setAddUsername('')
-      // Re-fetch to immediately reflect pending outgoing request
+      // Re-fetch to immediately reflect pending outgoing request, then switch to Pending tab
       const rels = await api.get<Relationship[]>('/api/v1/users/@me/relationships')
       setRelationships(rels)
+      setTimeout(() => setTab('pending'), 1500)
     } catch (err: any) {
       setAddStatus('error')
       setAddMsg(err.message || 'Could not send friend request')
@@ -157,31 +158,36 @@ export default function FriendsPage() {
                         <p className="text-white font-medium text-sm">{rel.user.username}</p>
                         <p className="text-text-muted text-xs capitalize">{isIncoming ? 'Incoming Request' : isOutgoing ? 'Outgoing Request' : isBlocked ? 'Blocked' : status}</p>
                       </div>
-                      <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <div className="flex items-center gap-2">
                         {isIncoming && (
                           <>
-                            <button onClick={() => handleAccept(rel.user.id)} className="w-8 h-8 rounded-full bg-bg-secondary hover:bg-success flex items-center justify-center text-text-muted hover:text-white transition-colors">
-                              <Check size={16} />
+                            <button onClick={() => handleAccept(rel.user.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-success/20 hover:bg-success text-success hover:text-white text-xs font-medium transition-colors">
+                              <Check size={14} /> Accept
                             </button>
-                            <button onClick={() => handleRemove(rel.user.id)} className="w-8 h-8 rounded-full bg-bg-secondary hover:bg-danger flex items-center justify-center text-text-muted hover:text-white transition-colors">
-                              <X size={16} />
+                            <button onClick={() => handleRemove(rel.user.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-bg-secondary hover:bg-danger text-text-muted hover:text-white text-xs font-medium transition-colors">
+                              <X size={14} /> Decline
                             </button>
                           </>
                         )}
-                        {(isOutgoing || isBlocked) && (
-                          <button onClick={() => handleRemove(rel.user.id)} className="w-8 h-8 rounded-full bg-bg-secondary hover:bg-danger flex items-center justify-center text-text-muted hover:text-white transition-colors">
-                            <X size={16} />
+                        {isOutgoing && (
+                          <button onClick={() => handleRemove(rel.user.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-bg-secondary hover:bg-danger text-text-muted hover:text-white text-xs font-medium transition-colors">
+                            <X size={14} /> Cancel
+                          </button>
+                        )}
+                        {isBlocked && (
+                          <button onClick={() => handleRemove(rel.user.id)} className="flex items-center gap-1.5 px-3 py-1.5 rounded bg-bg-secondary hover:bg-danger text-text-muted hover:text-white text-xs font-medium transition-colors">
+                            <X size={14} /> Unblock
                           </button>
                         )}
                         {rel.type === 'FRIEND' && (
-                          <>
+                          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                             <button onClick={() => handleMessage(rel.user.id)} className="w-8 h-8 rounded-full bg-bg-secondary hover:bg-bg-floating flex items-center justify-center text-text-muted hover:text-white transition-colors">
                               <MessageSquare size={16} />
                             </button>
                             <button onClick={() => handleRemove(rel.user.id)} className="w-8 h-8 rounded-full bg-bg-secondary hover:bg-danger flex items-center justify-center text-text-muted hover:text-white transition-colors">
                               <UserMinus size={16} />
                             </button>
-                          </>
+                          </div>
                         )}
                       </div>
                     </div>

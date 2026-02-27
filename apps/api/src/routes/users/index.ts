@@ -2,7 +2,7 @@ import { FastifyInstance } from 'fastify'
 import { z } from 'zod'
 import { authenticate } from '../../middleware/authenticate.js'
 import { prisma } from '../../lib/prisma.js'
-import { publishEvent } from '../../lib/redis.js'
+import { publishEvent, cacheDel } from '../../lib/redis.js'
 import { generateId } from '@freecord/snowflake'
 import { serializeUser, serializeChannel } from '../../lib/serialize.js'
 
@@ -306,6 +306,8 @@ export default async function userRoutes(app: FastifyInstance) {
     const me = await prisma.user.findUnique({ where: { id: request.userId } })
     await publishEvent({ type: 'RELATIONSHIP_ADD', userId: request.userId, data: { id: outgoing.id, type: 'PENDING_OUTGOING', user: serializeUser(target) } })
     await publishEvent({ type: 'RELATIONSHIP_ADD', userId: target.id, data: { id: incoming.id, type: 'PENDING_INCOMING', user: serializeUser(me!) } })
+    await cacheDel(`ready:${request.userId}`)
+    await cacheDel(`ready:${target.id}`)
 
     return reply.status(204).send()
   })
@@ -402,6 +404,8 @@ export default async function userRoutes(app: FastifyInstance) {
       userId: targetId,
       data: { id: incoming.id, type: 'PENDING_INCOMING', user: serializeUser(currentUser!) },
     })
+    await cacheDel(`ready:${request.userId}`)
+    await cacheDel(`ready:${targetId}`)
 
     return reply.status(204).send()
   })
@@ -484,6 +488,8 @@ export default async function userRoutes(app: FastifyInstance) {
         data: { id: outgoing.id, type: 'FRIEND', user: serializeUser(currentUser!) },
       })
     }
+    await cacheDel(`ready:${request.userId}`)
+    await cacheDel(`ready:${targetId}`)
 
     return reply.status(204).send()
   })
@@ -521,6 +527,8 @@ export default async function userRoutes(app: FastifyInstance) {
         data: { id: rel.id, userId: rel.targetId },
       })
     }
+    await cacheDel(`ready:${request.userId}`)
+    await cacheDel(`ready:${targetId}`)
 
     return reply.status(204).send()
   })
