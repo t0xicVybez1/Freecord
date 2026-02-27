@@ -70,7 +70,7 @@ export default function FriendsPage() {
   }
 
   const handleMessage = async (userId: string) => {
-    const ch = await api.post<Channel>('/api/v1/channels', { recipientId: userId })
+    const ch = await api.post<Channel>('/api/v1/users/@me/channels', { recipientId: userId })
     addDMChannel(ch)
     navigate(`/channels/@me/${ch.id}`)
   }

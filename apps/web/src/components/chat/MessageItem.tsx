@@ -40,7 +40,7 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
     }
     try {
       const updated = await api.patch<Message>(
-        `/channels/${message.channelId}/messages/${message.id}`,
+        `/api/v1/channels/${message.channelId}/messages/${message.id}`,
         { content: editContent.trim() }
       );
       updateMessage(message.channelId, updated);
@@ -53,14 +53,14 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
 
   const handleDelete = useCallback(async () => {
     try {
-      await api.delete(`/channels/${message.channelId}/messages/${message.id}`);
+      await api.delete(`/api/v1/channels/${message.channelId}/messages/${message.id}`);
       removeMessage(message.channelId, message.id);
     } catch {}
   }, [message, removeMessage]);
 
   const handleReact = useCallback(async (emoji: string) => {
     try {
-      await api.put(`/channels/${message.channelId}/messages/${message.id}/reactions/${encodeURIComponent(emoji)}/@me`, {});
+      await api.put(`/api/v1/channels/${message.channelId}/messages/${message.id}/reactions/${encodeURIComponent(emoji)}/@me`, {});
     } catch {}
     setShowEmojiBar(false);
   }, [message]);
@@ -70,12 +70,12 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
     const items = [
       ...(canEdit ? [{ label: 'Edit Message', icon: <Edit2 size={14} />, onClick: () => { setIsEditing(true); setTimeout(() => editRef.current?.focus(), 50); } }] : []),
       { label: 'Reply', icon: <Reply size={14} />, onClick: () => onReply(message) },
-      { label: 'Pin Message', icon: <Pin size={14} />, onClick: async () => { await api.put(`/channels/${message.channelId}/pins/${message.id}`, {}); } },
-      { type: 'divider' as const },
+      { label: 'Pin Message', icon: <Pin size={14} />, onClick: async () => { await api.put(`/api/v1/channels/${message.channelId}/pins/${message.id}`, {}); } },
+      { label: '', onClick: () => {}, divider: true },
       { label: 'Copy Message ID', onClick: () => navigator.clipboard.writeText(message.id) },
       ...(canDelete ? [{ label: 'Delete Message', icon: <Trash2 size={14} />, danger: true, onClick: handleDelete }] : []),
     ];
-    openContextMenu(items, { x: e.clientX, y: e.clientY });
+    openContextMenu(e.clientX, e.clientY, items);
   }, [canEdit, canDelete, message, onReply, handleDelete, openContextMenu]);
 
   const renderedContent = renderMarkdown(message.content);
@@ -90,7 +90,7 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
       {/* Avatar or timestamp column */}
       <div className="w-10 flex-shrink-0">
         {!isGrouped ? (
-          <Avatar user={message.author} size="md" />
+          <Avatar userId={message.author.id} username={message.author.username} avatarHash={message.author.avatar} size={40} />
         ) : (
           <span className={`text-[10px] text-text-muted leading-[1.375rem] opacity-0 group-hover:opacity-100 select-none`}>
             {formatTime(new Date(message.createdAt))}

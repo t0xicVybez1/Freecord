@@ -45,7 +45,7 @@ export function MessageInput({
   const sendTyping = useCallback(() => {
     if (!isTypingRef.current) {
       isTypingRef.current = true;
-      api.post(`/channels/${channelId}/typing`, {}).catch(() => {});
+      api.post(`/api/v1/channels/${channelId}/typing`, {}).catch(() => {});
     }
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
@@ -68,7 +68,7 @@ export function MessageInput({
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
 
     try {
-      const msg = await api.post<Message>(`/channels/${channelId}/messages`, {
+      const msg = await api.post<Message>(`/api/v1/channels/${channelId}/messages`, {
         content: trimmed,
         ...(replyTo ? { messageReference: { messageId: replyTo.id } } : {}),
       });
@@ -88,7 +88,7 @@ export function MessageInput({
       Array.from(files).forEach(f => formData.append('files', f));
       // Upload via CDN first, then send message with attachment URLs
       // For now, send as multipart to the API
-      const msg = await api.upload<Message>(`/channels/${channelId}/messages`, formData);
+      const msg = await api.upload<Message>(`/api/v1/channels/${channelId}/messages`, formData);
       addMessage(channelId, msg);
     } catch {}
     setUploading(false);

@@ -245,6 +245,75 @@ export default async function userRoutes(app: FastifyInstance) {
     return reply.send(result)
   })
 
+  // POST /users/@me/relationships/find - find user by username#discriminator and send friend request
+  app.post('/@me/relationships/find', { preHandler: authenticate }, async (request, reply) => {
+    const { username, discriminator } = z
+      .object({ username: z.string(), discriminator: z.string().optional() })
+      .parse(request.body)
+
+    const target = await prisma.user.findFirst({
+      where: {
+        username,
+        ...(discriminator ? { discriminator } : {}),
+        id: { not: request.userId },
+      },
+    })
+
+    if (!target) {
+      return reply.status(404).send({ code: 10013, message: 'Unknown user' })
+    }
+
+    // Re-use existing relationship logic by delegating to the same code path
+    const existing = await prisma.relationship.findFirst({
+      where: {
+        OR: [
+          { userId: request.userId, targetId: target.id },
+          { userId: target.id, targetId: request.userId },
+        ],
+      },
+    })
+
+    if (existing?.type === 'FRIEND') {
+      return reply.status(400).send({ code: 400, message: 'Already friends with this user' })
+    }
+    if (existing?.type === 'BLOCKED') {
+      return reply.status(400).send({ code: 400, message: 'Cannot send friend request' })
+    }
+    if (existing?.type === 'PENDING_OUTGOING' && existing.userId === request.userId) {
+      return reply.status(400).send({ code: 400, message: 'Friend request already pending' })
+    }
+
+    // If they already sent us a request, accept it
+    if (existing && existing.targetId === request.userId) {
+      await prisma.relationship.update({ where: { id: existing.id }, data: { type: 'FRIEND' } })
+      const outgoing = await prisma.relationship.findFirst({
+        where: { userId: target.id, targetId: request.userId },
+      })
+      if (outgoing) {
+        await prisma.relationship.update({ where: { id: outgoing.id }, data: { type: 'FRIEND' } })
+      }
+      await publishEvent({ type: 'RELATIONSHIP_UPDATE', userId: request.userId, data: { id: existing.id, type: 'FRIEND', user: serializeUser(target) } })
+      const me = await prisma.user.findUnique({ where: { id: request.userId } })
+      await publishEvent({ type: 'RELATIONSHIP_UPDATE', userId: target.id, data: { id: existing.id, type: 'FRIEND', user: serializeUser(me!) } })
+      return reply.status(204).send()
+    }
+
+    const [outgoing, incoming] = await prisma.$transaction([
+      prisma.relationship.create({
+        data: { id: generateId(), userId: request.userId, targetId: target.id, type: 'PENDING_OUTGOING' },
+      }),
+      prisma.relationship.create({
+        data: { id: generateId(), userId: target.id, targetId: request.userId, type: 'PENDING_INCOMING' },
+      }),
+    ])
+
+    const me = await prisma.user.findUnique({ where: { id: request.userId } })
+    await publishEvent({ type: 'RELATIONSHIP_ADD', userId: request.userId, data: { id: outgoing.id, type: 'PENDING_OUTGOING', user: serializeUser(target) } })
+    await publishEvent({ type: 'RELATIONSHIP_ADD', userId: target.id, data: { id: incoming.id, type: 'PENDING_INCOMING', user: serializeUser(me!) } })
+
+    return reply.status(204).send()
+  })
+
   // POST /users/@me/relationships/:userId - send friend request
   app.post('/@me/relationships/:userId', { preHandler: authenticate }, async (request, reply) => {
     const { userId: targetId } = request.params as { userId: string }

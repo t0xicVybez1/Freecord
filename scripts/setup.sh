@@ -260,12 +260,14 @@ ENVEOF
   # ---- Inject generated secrets ----
   JWT_SECRET=$(generate_secret)
   JWT_REFRESH_SECRET=$(generate_secret)
+  INTERNAL_TOKEN=$(generate_secret)
   POSTGRES_PASSWORD=$(generate_secret | head -c 24)
   MINIO_SECRET=$(generate_secret | head -c 24)
 
   # Replace placeholder values
   sed -i "s|change-me-to-a-random-32-char-string|${JWT_SECRET}|" .env
   sed -i "s|change-me-to-another-random-32-char-string|${JWT_REFRESH_SECRET}|" .env
+  sed -i "s|change-me-to-a-random-32-char-internal-token|${INTERNAL_TOKEN}|" .env
   # Update POSTGRES_PASSWORD line
   sed -i "s|^POSTGRES_PASSWORD=.*|POSTGRES_PASSWORD=${POSTGRES_PASSWORD}|" .env
   # Keep DATABASE_URL in sync with new password

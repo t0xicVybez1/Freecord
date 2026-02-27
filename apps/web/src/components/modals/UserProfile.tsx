@@ -33,9 +33,9 @@ export function UserProfileModal({ userId, onClose }: UserProfileProps) {
     setLoading(true);
     try {
       if (isFriend) {
-        await api.delete(`/users/@me/relationships/${userId}`);
+        await api.delete(`/api/v1/users/@me/relationships/${userId}`);
       } else if (!isPending) {
-        await api.put(`/users/@me/relationships/${userId}`, { type: 1 });
+        await api.put(`/api/v1/users/@me/relationships/${userId}`, { type: 1 });
       }
     } catch {}
     setLoading(false);
@@ -57,7 +57,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileProps) {
         {/* Avatar */}
         <div className="-mt-10 mb-3 flex items-end justify-between">
           <div className="relative">
-            <Avatar user={user} size="xl" className="ring-4 ring-bg-primary" />
+            <Avatar userId={user.id} username={user.username} avatarHash={user.avatar} size={80} className="ring-4 ring-bg-primary" />
             <div className={`absolute bottom-0 right-0 w-5 h-5 rounded-full border-2 border-bg-primary ${statusColors[presence?.status || 'offline'] || 'bg-status-offline'}`} />
           </div>
           {!isSelf && (
