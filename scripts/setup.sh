@@ -383,6 +383,12 @@ run_migrations() {
   log_step "Running database migrations..."
   cd "$PROJECT_ROOT"
 
+  # Export vars from .env so Prisma can resolve DATABASE_URL
+  set -a
+  # shellcheck source=/dev/null
+  [[ -f .env ]] && source .env
+  set +a
+
   pnpm --filter @freecord/api run db:generate
   pnpm --filter @freecord/api run db:migrate
 
