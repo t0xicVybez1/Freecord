@@ -227,20 +227,16 @@ export default async function userRoutes(app: FastifyInstance) {
   // GET /users/@me/relationships
   app.get('/@me/relationships', { preHandler: authenticate }, async (request, reply) => {
     const relationships = await prisma.relationship.findMany({
-      where: { OR: [{ userId: request.userId }, { targetId: request.userId }] },
-      include: { user: true, target: true },
+      where: { userId: request.userId },
+      include: { target: true },
     })
 
-    const result = relationships.map((r) => {
-      const isInitiator = r.userId === request.userId
-      const otherUser = isInitiator ? r.target : r.user
-      return {
-        id: r.id,
-        type: r.type,
-        user: serializeUser(otherUser),
-        since: r.createdAt.toISOString(),
-      }
-    })
+    const result = relationships.map((r) => ({
+      id: r.id,
+      type: r.type,
+      user: serializeUser(r.target),
+      since: r.createdAt.toISOString(),
+    }))
 
     return reply.send(result)
   })
