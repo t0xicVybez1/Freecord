@@ -3,21 +3,47 @@ import { useVoiceStore } from '@/stores/voice'
 import { useUIStore } from '@/stores/ui'
 import { Avatar } from '@/components/ui/Avatar'
 import { Tooltip } from '@/components/ui/Tooltip'
-import { Mic, MicOff, Headphones, HeadphoneOff, Settings } from 'lucide-react'
+import { api } from '@/lib/api'
+import { Mic, MicOff, Headphones, HeadphoneOff, Settings, Circle } from 'lucide-react'
+import type { PrivateUser } from '@freecord/types'
+import { UserStatus } from '@freecord/types'
+
+const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
+  { value: UserStatus.ONLINE, label: 'Online', color: '#23a55a' },
+  { value: UserStatus.IDLE, label: 'Idle', color: '#f0b132' },
+  { value: UserStatus.DND, label: 'Do Not Disturb', color: '#f23f43' },
+  { value: UserStatus.INVISIBLE, label: 'Invisible', color: '#80848e' },
+]
 
 export function UserPanel() {
   const user = useAuthStore(s => s.user)
+  const updateUser = useAuthStore(s => s.updateUser)
   const { selfMute, selfDeaf, setSelfMute, setSelfDeaf } = useVoiceStore()
-  const openModal = useUIStore(s => s.openModal)
+  const { openModal, openContextMenu } = useUIStore()
   if (!user) return null
+
+  const handleStatusMenu = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    openContextMenu(e.clientX, e.clientY, STATUS_OPTIONS.map(opt => ({
+      label: opt.label,
+      icon: <Circle size={10} fill={opt.color} color={opt.color} />,
+      onClick: async () => {
+        try {
+          const updated = await api.patch<PrivateUser>('/api/v1/users/@me', { status: opt.value })
+          updateUser({ status: updated.status })
+        } catch {}
+      },
+    })))
+  }
 
   return (
     <div className="flex items-center gap-2 px-2 py-2 bg-bg-tertiary border-t border-black/20 flex-shrink-0">
-      <Avatar
-        userId={user.id} username={user.username} avatarHash={user.avatar}
-        size={32} status={user.status} showStatus className="cursor-pointer"
-        onClick={() => openModal({ type: 'USER_PROFILE', data: { userId: user.id } })}
-      />
+      <div className="relative cursor-pointer flex-shrink-0" onClick={handleStatusMenu}>
+        <Avatar
+          userId={user.id} username={user.username} avatarHash={user.avatar}
+          size={32} status={user.status} showStatus
+        />
+      </div>
       <div className="flex-1 min-w-0 cursor-pointer" onClick={() => openModal({ type: 'USER_SETTINGS' })}>
         <p className="text-sm font-semibold text-white truncate leading-tight">{user.username}</p>
         <p className="text-xs text-text-muted truncate leading-tight">

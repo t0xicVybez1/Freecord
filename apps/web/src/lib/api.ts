@@ -22,7 +22,7 @@ async function refreshAccessToken(): Promise<string | null> {
 
 async function request<T>(path: string, options: RequestInit = {}, retry = true): Promise<T> {
   const headers: Record<string, string> = { ...(options.headers as Record<string, string>) }
-  if (!(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
+  if (options.body !== undefined && !(options.body instanceof FormData)) headers['Content-Type'] = 'application/json'
   if (accessToken) headers['Authorization'] = `Bearer ${accessToken}`
 
   const r = await fetch(`${API_BASE}${path}`, { ...options, headers, credentials: 'include' })
