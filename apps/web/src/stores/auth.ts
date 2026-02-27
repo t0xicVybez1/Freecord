@@ -1,12 +1,10 @@
 import { create } from 'zustand'
 import type { PrivateUser, UserSettings } from '@freecord/types'
-import api, { setAccessToken } from '@/lib/api'
+import api, { setAccessToken, refreshAccessToken } from '@/lib/api'
 import { gateway } from '@/lib/gateway'
 import { useGuildsStore } from './guilds'
 import { useChannelsStore } from './channels'
 import type { Channel } from '@freecord/types'
-
-const API_URL = () => import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
 let _preloading = false
 
@@ -29,19 +27,15 @@ async function preloadGuildsAndChannels() {
   }
 }
 
-/** Register a handler so the gateway can silently refresh an expired access token. */
+/** Register a handler so the gateway can silently refresh an expired access token.
+ *  Uses the same refreshAccessToken() as api.ts so concurrent calls are deduplicated
+ *  and we never race two simultaneous rotateSession() calls against each other. */
 function setupTokenRefresh(set: (s: Partial<{ isAuthenticated: boolean }>) => void) {
   gateway.setInvalidSessionHandler(async () => {
-    try {
-      const r = await fetch(`${API_URL()}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' })
-      if (r.ok) {
-        const data = await r.json()
-        setAccessToken(data.token)
-        gateway.connect(data.token) // connect() resets intentionalClose and reconnects
-      } else {
-        set({ isAuthenticated: false })
-      }
-    } catch {
+    const token = await refreshAccessToken()
+    if (token) {
+      gateway.connect(token) // connect() resets intentionalClose and reconnects
+    } else {
       set({ isAuthenticated: false })
     }
   })

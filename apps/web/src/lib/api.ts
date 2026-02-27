@@ -6,7 +6,7 @@ let refreshPromise: Promise<string | null> | null = null
 export function setAccessToken(token: string | null) { accessToken = token }
 export function getAccessToken() { return accessToken }
 
-async function refreshAccessToken(): Promise<string | null> {
+export async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise
   refreshPromise = (async () => {
     try {

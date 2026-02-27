@@ -111,8 +111,10 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
   }, [section]);
 
   // Load media devices when voice tab opens — must request permission first or labels will be empty
+  // navigator.mediaDevices is only available in secure contexts (HTTPS / localhost)
   useEffect(() => {
     if (section !== 'voice') return;
+    if (!navigator.mediaDevices) return; // HTTP (non-secure context) — skip silently
     const load = async () => {
       // Request mic permission so browser exposes device labels
       try { const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); s.getTracks().forEach(t => t.stop()) } catch {}
