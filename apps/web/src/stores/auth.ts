@@ -4,6 +4,26 @@ import api, { setAccessToken } from '@/lib/api'
 import { gateway } from '@/lib/gateway'
 import { useGuildsStore } from './guilds'
 
+const API_URL = () => import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+/** Register a handler so the gateway can silently refresh an expired access token. */
+function setupTokenRefresh(set: (s: Partial<{ isAuthenticated: boolean }>) => void) {
+  gateway.setInvalidSessionHandler(async () => {
+    try {
+      const r = await fetch(`${API_URL()}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' })
+      if (r.ok) {
+        const data = await r.json()
+        setAccessToken(data.token)
+        gateway.connect(data.token) // connect() resets intentionalClose and reconnects
+      } else {
+        set({ isAuthenticated: false })
+      }
+    } catch {
+      set({ isAuthenticated: false })
+    }
+  })
+}
+
 interface AuthState {
   user: PrivateUser | null
   settings: UserSettings | null
@@ -36,6 +56,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ])
         set({ user, settings, isAuthenticated: true })
         gateway.connect(data.token)
+        setupTokenRefresh(set)
         api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
           if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
         }).catch(() => {})
@@ -50,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const settings = await api.get<UserSettings>('/api/v1/users/@me/settings').catch(() => null)
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
+    setupTokenRefresh(set)
     api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
       if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
     }).catch(() => {})
@@ -61,6 +83,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const settings = await api.get<UserSettings>('/api/v1/users/@me/settings').catch(() => null)
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
+    setupTokenRefresh(set)
     api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
       if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
     }).catch(() => {})

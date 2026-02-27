@@ -13,6 +13,12 @@ export class GatewayClient {
   private reconnectAttempts = 0
   private intentionalClose = false
   private readonly url = import.meta.env.VITE_GATEWAY_URL || 'ws://localhost:8080/gateway'
+  private _onInvalidSession: (() => void) | null = null
+
+  /** Called by the auth store to handle token refresh when the session is invalid/expired. */
+  setInvalidSessionHandler(fn: () => void) {
+    this._onInvalidSession = fn
+  }
 
   connect(token: string) {
     this.token = token
@@ -54,7 +60,12 @@ export class GatewayClient {
         this._emit(p.t!, p.d)
         break
       case GatewayOpcode.INVALID_SESSION:
-        setTimeout(() => this._identify(), 1000)
+        // Stop auto-reconnect — the token is likely expired. Let the auth store
+        // refresh the token and call connect() again with a fresh one.
+        this.intentionalClose = true
+        if (this._onInvalidSession) {
+          this._onInvalidSession()
+        }
         break
       case GatewayOpcode.RECONNECT:
         this._connect()
