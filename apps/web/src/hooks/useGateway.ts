@@ -6,10 +6,10 @@ import { useMessagesStore } from '@/stores/messages'
 import { useUsersStore } from '@/stores/users'
 import { useVoiceStore } from '@/stores/voice'
 import { useAuthStore } from '@/stores/auth'
-import type { Guild, Channel, Message, GuildMember, VoiceState, User, Relationship } from '@freecord/types'
+import type { Guild, Channel, Message, GuildMember, VoiceState, User, Relationship, Role } from '@freecord/types'
 
 export function useGateway() {
-  const { setGuilds, addGuild, updateGuild, removeGuild, addGuildMember, removeGuildMember, updateGuildMember } = useGuildsStore()
+  const { setGuilds, addGuild, updateGuild, removeGuild, addGuildMember, removeGuildMember, updateGuildMember, addRole, updateRole, removeRole, setEmojis } = useGuildsStore()
   const { setGuildChannels, addChannel, updateChannel, removeChannel, addDMChannel, setDMChannels } = useChannelsStore()
   const { addMessage, updateMessage, removeMessage, removeMessages, addReaction, removeReaction, clearReactions } = useMessagesStore()
   const { setUser, setUsers, setPresence, setRelationships, addRelationship, removeRelationship } = useUsersStore()
@@ -51,6 +51,14 @@ export function useGateway() {
       if (d.user) setUser(d.user)
       updateGuildMember(d.guildId, d)
     }))
+
+    // Roles
+    off.push(gateway.on('GUILD_ROLE_CREATE', (d: Role & { guildId: string }) => addRole(d.guildId, d)))
+    off.push(gateway.on('GUILD_ROLE_UPDATE', (d: Role & { guildId: string }) => updateRole(d.guildId, d)))
+    off.push(gateway.on('GUILD_ROLE_DELETE', (d: { guildId: string; roleId: string }) => removeRole(d.guildId, d.roleId)))
+
+    // Emojis
+    off.push(gateway.on('GUILD_EMOJIS_UPDATE', (d: { guildId: string; emojis: any[] }) => setEmojis(d.guildId, d.emojis)))
 
     // Channels
     off.push(gateway.on('CHANNEL_CREATE', (d: Channel) => { if (d.guildId) addChannel(d); else addDMChannel(d) }))

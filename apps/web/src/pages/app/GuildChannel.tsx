@@ -7,6 +7,7 @@ import { MessageList } from '@/components/chat/MessageList'
 import { MessageInput } from '@/components/chat/MessageInput'
 import { MemberList } from '@/components/layout/MemberList'
 import { TypingIndicator } from '@/components/chat/TypingIndicator'
+import { SearchPanel } from '@/components/chat/SearchPanel'
 import { VoiceControls } from '@/components/voice/VoiceControls'
 import { useUIStore } from '@/stores/ui'
 import { useVoiceStore } from '@/stores/voice'
@@ -21,6 +22,8 @@ export default function GuildChannelPage() {
   const getGuild = useGuildsStore(s => s.getGuild)
   const { activeMemberListPanel, toggleMemberList } = useUIStore()
   const [replyTo, setReplyTo] = useState<Message | null>(null)
+  const [showSearch, setShowSearch] = useState(false)
+  const [jumpToId, setJumpToId] = useState<string | undefined>()
   const currentVoiceId = useVoiceStore(s => s.channelId)
 
   const channel = channelId ? getChannel(channelId) : null
@@ -43,6 +46,12 @@ export default function GuildChannelPage() {
   const isVoice = channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE
   const ChannelIcon = isVoice ? Volume2 : channel.type === ChannelType.GUILD_ANNOUNCEMENT ? Megaphone : channel.nsfw ? Lock : Hash
 
+  const handleJumpTo = (messageId: string) => {
+    setJumpToId(messageId)
+    // Clear after a moment so it can be re-triggered
+    setTimeout(() => setJumpToId(undefined), 1000)
+  }
+
   return (
     <>
       <ChannelSidebar guildId={guildId} />
@@ -62,7 +71,14 @@ export default function GuildChannelPage() {
                 <Users size={20} />
               </button>
             </Tooltip>
-            <Tooltip content="Search"><button className="p-1.5 text-interactive-normal hover:text-white"><Search size={20} /></button></Tooltip>
+            <Tooltip content="Search Messages">
+              <button
+                onClick={() => setShowSearch(v => !v)}
+                className={`p-1.5 transition-colors ${showSearch ? 'text-white' : 'text-interactive-normal hover:text-white'}`}
+              >
+                <Search size={20} />
+              </button>
+            </Tooltip>
             <Tooltip content="Inbox"><button className="p-1.5 text-interactive-normal hover:text-white"><Inbox size={20} /></button></Tooltip>
             <Tooltip content="Help"><button className="p-1.5 text-interactive-normal hover:text-white"><HelpCircle size={20} /></button></Tooltip>
           </div>
@@ -74,11 +90,19 @@ export default function GuildChannelPage() {
         {!isVoice && (
           <div className="flex flex-1 overflow-hidden min-w-0">
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-              <MessageList channelId={channelId} onReply={setReplyTo} />
+              <MessageList channelId={channelId} onReply={setReplyTo} jumpToMessageId={jumpToId} />
               <TypingIndicator channelId={channelId} />
               <MessageInput channelId={channelId} channelName={channel.name || 'channel'} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
             </div>
             {activeMemberListPanel && guild && <MemberList guildId={guildId} />}
+            {showSearch && (
+              <SearchPanel
+                channelId={channelId}
+                channelName={channel.name}
+                onClose={() => setShowSearch(false)}
+                onJumpTo={handleJumpTo}
+              />
+            )}
           </div>
         )}
 

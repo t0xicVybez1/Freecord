@@ -18,7 +18,7 @@ function DateSeparator({ date }: { date: Date }) {
   )
 }
 
-export function MessageList({ channelId, onReply }: { channelId: string; onReply?: (msg: Message) => void }) {
+export function MessageList({ channelId, onReply, jumpToMessageId }: { channelId: string; onReply?: (msg: Message) => void; jumpToMessageId?: string }) {
   const { getMessages, getChannelState, setMessages, prependMessages, setLoading } = useMessagesStore()
   const messages = getMessages(channelId)
   const state = getChannelState(channelId)
@@ -26,6 +26,7 @@ export function MessageList({ channelId, onReply }: { channelId: string; onReply
   const containerRef = useRef<HTMLDivElement>(null)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
+  const [highlightId, setHighlightId] = useState<string | undefined>()
   const isAtBottom = useRef(true)
 
   // Load initial messages
@@ -36,6 +37,17 @@ export function MessageList({ channelId, onReply }: { channelId: string; onReply
       .then(msgs => setMessages(channelId, msgs.reverse(), msgs.length >= 50))
       .catch(() => setLoading(channelId, false))
   }, [channelId])
+
+  // Jump to message by ID
+  useEffect(() => {
+    if (!jumpToMessageId) return
+    const el = document.getElementById(`msg-${jumpToMessageId}`)
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' })
+      setHighlightId(jumpToMessageId)
+      setTimeout(() => setHighlightId(undefined), 2000)
+    }
+  }, [jumpToMessageId])
 
   // Auto scroll to bottom on new messages
   useEffect(() => {
@@ -130,8 +142,9 @@ export function MessageList({ channelId, onReply }: { channelId: string; onReply
         {grouped.map(({ message, isGrouped }, i) => {
           const prevMsg = i > 0 ? grouped[i-1].message : null
           const showDate = !prevMsg || !isSameDay(new Date(message.createdAt), new Date(prevMsg.createdAt))
+          const isHighlighted = highlightId === message.id
           return (
-            <div key={message.id}>
+            <div key={message.id} id={`msg-${message.id}`} className={isHighlighted ? 'animate-pulse bg-yellow-500/10 rounded transition-colors' : ''}>
               {showDate && <DateSeparator date={new Date(message.createdAt)} />}
               <MessageItem message={message} isGrouped={isGrouped} onReply={onReply ?? (() => {})} />
             </div>

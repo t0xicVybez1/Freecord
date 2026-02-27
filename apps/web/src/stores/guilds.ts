@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Guild, GuildMember } from '@freecord/types'
+import type { Guild, GuildMember, Role } from '@freecord/types'
 
 interface GuildsState {
   guilds: Record<string, Guild>
@@ -13,6 +13,10 @@ interface GuildsState {
   addGuildMember: (guildId: string, member: GuildMember) => void
   removeGuildMember: (guildId: string, userId: string) => void
   updateGuildMember: (guildId: string, member: GuildMember) => void
+  addRole: (guildId: string, role: Role) => void
+  updateRole: (guildId: string, role: Role) => void
+  removeRole: (guildId: string, roleId: string) => void
+  setEmojis: (guildId: string, emojis: any[]) => void
   reset: () => void
 }
 
@@ -69,6 +73,30 @@ export const useGuildsStore = create<GuildsState>((set, get) => ({
       m.user.id === member.user.id ? { ...m, ...member } : m
     )
     return { guilds: { ...s.guilds, [guildId]: { ...guild, members } } }
+  }),
+
+  addRole: (guildId, role) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, roles: [...(guild.roles || []), role] } } }
+  }),
+
+  updateRole: (guildId, role) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, roles: (guild.roles || []).map(r => r.id === role.id ? role : r) } } }
+  }),
+
+  removeRole: (guildId, roleId) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, roles: (guild.roles || []).filter(r => r.id !== roleId) } } }
+  }),
+
+  setEmojis: (guildId, emojis) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, emojis } } }
   }),
 
   reset: () => set({ guilds: {}, guildIds: [] }),

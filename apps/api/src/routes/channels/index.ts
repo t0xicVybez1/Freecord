@@ -204,6 +204,31 @@ export default async function channelRoutes(app: FastifyInstance) {
     return reply.send(result.map((m) => serializeMessage(m, request.userId)))
   })
 
+  // GET /channels/:channelId/messages/search?q=...
+  app.get('/:channelId/messages/search', { preHandler: authenticate }, async (request, reply) => {
+    const { channelId } = request.params as { channelId: string }
+    const { q = '', limit = 25 } = request.query as { q?: string; limit?: number }
+
+    if (!q.trim()) return reply.send({ messages: [], total: 0 })
+
+    const canAccess = await canAccessChannel(channelId, request.userId)
+    if (!canAccess) return reply.status(403).send({ code: 403, message: 'Missing access' })
+
+    const take = Math.min(Number(limit), 100)
+    const messages = await prisma.message.findMany({
+      where: {
+        channelId,
+        deletedAt: null,
+        content: { contains: q.trim(), mode: 'insensitive' },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
+      include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
+    })
+
+    return reply.send({ messages: messages.map((m) => serializeMessage(m, request.userId)), total: messages.length })
+  })
+
   // POST /channels/:channelId/messages
   app.post('/:channelId/messages', { preHandler: authenticate }, async (request, reply) => {
     const { channelId } = request.params as { channelId: string }

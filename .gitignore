@@ -25,6 +25,9 @@ Thumbs.db
 .idea/
 *.swp
 
+# Claude Code local settings (may contain tokens)
+.claude/settings.local.json
+
 # Prisma
 apps/api/prisma/migrations/
 apps/api/src/generated/
