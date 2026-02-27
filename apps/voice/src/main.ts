@@ -1,6 +1,7 @@
 import Fastify from 'fastify'
 import cors from '@fastify/cors'
 import websocket from '@fastify/websocket'
+import * as mediasoup from 'mediasoup'
 import { createLogger } from '@freecord/logger'
 import { RoomManager } from './lib/room.js'
 
@@ -52,7 +53,7 @@ async function build() {
   // Connect transport (DTLS)
   app.post('/voice/rooms/:channelId/transports/:transportId/connect', async (request, reply) => {
     const { channelId, transportId } = request.params as { channelId: string; transportId: string }
-    const { userId, dtlsParameters } = request.body as { userId: string; dtlsParameters: unknown }
+    const { userId, dtlsParameters } = request.body as { userId: string; dtlsParameters: mediasoup.types.DtlsParameters }
 
     const room = roomManager.getRoom(channelId)
     if (!room) return reply.status(404).send({ message: 'Room not found' })

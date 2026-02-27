@@ -42,7 +42,7 @@ export const config = {
           'x-google-start-bitrate': 1000,
         },
       },
-    ] as mediasoup.types.RtpCodecCapability[],
+    ] as unknown as mediasoup.types.RtpCodecCapability[],
   },
   webRtcTransport: {
     listenIps: [
