@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
+import { useShallow } from 'zustand/react/shallow'
 import { useChannelsStore } from '@/stores/channels'
 import { useUsersStore } from '@/stores/users'
 import { useAuthStore } from '@/stores/auth'
@@ -11,7 +12,7 @@ import { ChannelType } from '@freecord/types'
 export function DMChannelList() {
   const navigate = useNavigate()
   const params = useParams()
-  const dmChannels = useChannelsStore(s => s.getDMChannels())
+  const dmChannels = useChannelsStore(useShallow(s => s.getDMChannels()))
   const myId = useAuthStore(s => s.user?.id)
   const presences = useUsersStore(s => s.presences)
   const openModal = useUIStore(s => s.openModal)

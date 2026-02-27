@@ -1,4 +1,5 @@
 import { useNavigate, useParams } from 'react-router-dom'
+import { useShallow } from 'zustand/react/shallow'
 import { useGuildsStore } from '@/stores/guilds'
 import { useChannelsStore } from '@/stores/channels'
 import { useUIStore } from '@/stores/ui'
@@ -10,7 +11,7 @@ import { ChannelType } from '@freecord/types'
 
 function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; icon: string | null }; isActive: boolean }) {
   const navigate = useNavigate()
-  const channels = useChannelsStore(s => s.getGuildChannels(guild.id))
+  const channels = useChannelsStore(useShallow(s => s.getGuildChannels(guild.id)))
 
   const handleClick = () => {
     const first = channels.find(c => c.type === ChannelType.GUILD_TEXT)
@@ -45,7 +46,7 @@ function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; ico
 export function GuildSidebar() {
   const navigate = useNavigate()
   const params = useParams()
-  const guilds = useGuildsStore(s => s.getGuilds())
+  const guilds = useGuildsStore(useShallow(s => s.getGuilds()))
   const openModal = useUIStore(s => s.openModal)
 
   return (

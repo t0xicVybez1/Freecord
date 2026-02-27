@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useShallow } from 'zustand/react/shallow'
 import { useGuildsStore } from '@/stores/guilds'
 import { useChannelsStore } from '@/stores/channels'
 import { useVoiceStore } from '@/stores/voice'
@@ -112,7 +113,7 @@ function CategoryItem({ channel, guildId, children }: { channel: Channel; guildI
 
 export function ChannelSidebar({ guildId }: { guildId: string }) {
   const guild = useGuildsStore(s => s.guilds[guildId])
-  const channels = useChannelsStore(s => s.getGuildChannels(guildId))
+  const channels = useChannelsStore(useShallow(s => s.getGuildChannels(guildId)))
   const openModal = useUIStore(s => s.openModal)
 
   if (!guild) return null
