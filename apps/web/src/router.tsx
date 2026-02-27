@@ -1,4 +1,4 @@
-import { createBrowserRouter, Navigate } from 'react-router-dom'
+import { createBrowserRouter, Navigate, useParams } from 'react-router-dom'
 import { AuthLayout } from './components/layout/AuthLayout'
 import { AppLayout } from './components/layout/AppLayout'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
@@ -9,6 +9,11 @@ import GuildChannelPage from './pages/app/GuildChannel'
 import DirectMessagePage from './pages/app/DirectMessage'
 import HomePage from './pages/app/Home'
 import InvitePage from './pages/Invite'
+
+function RedirectInvite() {
+  const { code } = useParams<{ code: string }>()
+  return <Navigate to={`/invite/${code}`} replace />
+}
 
 export const router = createBrowserRouter([
   {
@@ -39,4 +44,6 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: <RegisterPage /> }],
   },
   { path: '/invite/:code', element: <InvitePage /> },
+  // Redirect plural /invites/:code → /invite/:code
+  { path: '/invites/:code', element: <RedirectInvite /> },
 ])

@@ -167,7 +167,20 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   };
 
   const handleCopyInvite = (code: string) => {
-    navigator.clipboard.writeText(`${window.location.origin}/invite/${code}`);
+    const url = `${window.location.origin}/invite/${code}`;
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(url);
+    } else {
+      // Fallback for non-HTTPS contexts
+      const el = document.createElement('textarea');
+      el.value = url;
+      el.style.position = 'fixed';
+      el.style.opacity = '0';
+      document.body.appendChild(el);
+      el.select();
+      document.execCommand('copy');
+      document.body.removeChild(el);
+    }
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(''), 2000);
   };
