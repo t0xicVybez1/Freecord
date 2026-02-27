@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma.js'
 import { generateId } from '@freecord/snowflake'
 import { serializeUser } from '../../lib/serialize.js'
 import { authenticate } from '../../middleware/authenticate.js'
-import { totp } from '@otplib/preset-totp'
+import { totp } from 'otplib'
 import qrcode from 'qrcode'
 
 const registerSchema = z.object({
