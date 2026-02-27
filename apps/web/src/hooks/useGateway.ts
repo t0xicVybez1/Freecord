@@ -52,6 +52,7 @@ export function useGateway() {
     }))
     off.push(gateway.on('USER_UPDATE', (d: User) => { updateUser(d as any); setUser(d); setPresence(d.id, { userId: d.id, status: d.status as any }) }))
     off.push(gateway.on('RELATIONSHIP_ADD', (d: Relationship) => addRelationship(d)))
+    off.push(gateway.on('RELATIONSHIP_UPDATE', (d: Relationship) => addRelationship(d)))
     off.push(gateway.on('RELATIONSHIP_REMOVE', (d: { id: string; userId: string }) => removeRelationship(d.userId)))
 
     return () => off.forEach(fn => fn())
