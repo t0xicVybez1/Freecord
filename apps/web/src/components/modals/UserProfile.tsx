@@ -35,7 +35,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileProps) {
       if (isFriend) {
         await api.delete(`/api/v1/users/@me/relationships/${userId}`);
       } else if (!isPending) {
-        await api.put(`/api/v1/users/@me/relationships/${userId}`, { type: 1 });
+        await api.post(`/api/v1/users/@me/relationships/${userId}`, {});
       }
     } catch {}
     setLoading(false);
