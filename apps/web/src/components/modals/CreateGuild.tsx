@@ -5,7 +5,9 @@ import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { useUIStore } from '../../stores/ui';
 import { useGuildsStore } from '../../stores/guilds';
+import { useChannelsStore } from '../../stores/channels';
 import { api } from '../../lib/api';
+import { useNavigate } from 'react-router-dom';
 import type { Guild } from '@freecord/types';
 
 type Step = 'choice' | 'create' | 'join';
@@ -16,6 +18,8 @@ interface CreateGuildProps {
 
 export function CreateGuildModal({ onClose }: CreateGuildProps) {
   const { addGuild } = useGuildsStore();
+  const { setGuildChannels } = useChannelsStore();
+  const navigate = useNavigate();
   const [step, setStep] = useState<Step>('choice');
   const [name, setName] = useState('');
   const [inviteCode, setInviteCode] = useState('');
@@ -43,9 +47,12 @@ export function CreateGuildModal({ onClose }: CreateGuildProps) {
     setError('');
     try {
       const code = inviteCode.trim().split('/').pop() || inviteCode.trim();
-      const guild = await api.post<Guild>(`/invites/${code}`, {});
+      const guild = await api.post<Guild>(`/api/v1/invites/${code}`, {});
       addGuild(guild);
+      if (guild.channels) setGuildChannels(guild.id, guild.channels);
       onClose();
+      const firstText = guild.channels?.find((c: any) => c.type === 0);
+      navigate(firstText ? `/channels/${guild.id}/${firstText.id}` : `/channels/${guild.id}`);
     } catch (e: any) {
       setError(e.message || 'Invalid invite link');
     } finally {
