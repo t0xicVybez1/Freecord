@@ -320,10 +320,10 @@ start_infra() {
   cd "$PROJECT_ROOT"
 
   # Prefer the compose plugin (docker compose) over the legacy binary
-  if docker compose version &>/dev/null 2>&1; then
-    COMPOSE="docker compose"
+  if $SUDO docker compose version &>/dev/null 2>&1; then
+    COMPOSE="$SUDO docker compose"
   elif command -v docker-compose &>/dev/null; then
-    COMPOSE="docker-compose"
+    COMPOSE="$SUDO docker-compose"
     log_warn "Using legacy docker-compose binary. Consider upgrading to Docker Compose v2."
   else
     log_error "docker compose not found. Please install the Docker Compose plugin."
@@ -336,7 +336,7 @@ start_infra() {
   log_step "Waiting for PostgreSQL to be ready..."
   MAX_TRIES=30
   TRIES=0
-  until docker exec freecord-postgres pg_isready -U freecord &>/dev/null 2>&1; do
+  until $SUDO docker exec freecord-postgres pg_isready -U freecord &>/dev/null 2>&1; do
     TRIES=$((TRIES + 1))
     if [[ $TRIES -ge $MAX_TRIES ]]; then
       log_error "PostgreSQL failed to start after ${MAX_TRIES} attempts. Check: docker logs freecord-postgres"
@@ -350,7 +350,7 @@ start_infra() {
   # --- Wait for Redis ---
   log_step "Waiting for Redis to be ready..."
   TRIES=0
-  until docker exec freecord-redis redis-cli ping &>/dev/null 2>&1; do
+  until $SUDO docker exec freecord-redis redis-cli ping &>/dev/null 2>&1; do
     TRIES=$((TRIES + 1))
     if [[ $TRIES -ge $MAX_TRIES ]]; then
       log_error "Redis failed to start after ${MAX_TRIES} attempts. Check: docker logs freecord-redis"
