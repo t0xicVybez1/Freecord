@@ -179,13 +179,13 @@ export default async function channelRoutes(app: FastifyInstance) {
             where: { channelId, deletedAt: null, createdAt: { lte: aroundMsg.createdAt } },
             orderBy: { createdAt: 'desc' },
             take: half + 1,
-            include: { author: true, reactions: true },
+            include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
           }),
           prisma.message.findMany({
             where: { channelId, deletedAt: null, createdAt: { gt: aroundMsg.createdAt } },
             orderBy: { createdAt: 'asc' },
             take: half,
-            include: { author: true, reactions: true },
+            include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
           }),
         ])
         const combined = [...before_msgs.reverse(), ...after_msgs]
@@ -197,7 +197,7 @@ export default async function channelRoutes(app: FastifyInstance) {
       where: whereClause,
       orderBy,
       take,
-      include: { author: true, reactions: true },
+      include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
     })
 
     const result = orderBy.createdAt === 'desc' ? messages.reverse() : messages
@@ -248,7 +248,7 @@ export default async function channelRoutes(app: FastifyInstance) {
         flags: body.flags ?? 0,
         referencedMessageId: body.messageReference?.messageId,
       },
-      include: { author: true, reactions: true },
+      include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
     })
 
     // Update lastMessageId
@@ -278,7 +278,7 @@ export default async function channelRoutes(app: FastifyInstance) {
 
     const message = await prisma.message.findFirst({
       where: { id: messageId, channelId, deletedAt: null },
-      include: { author: true, reactions: true },
+      include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
     })
     if (!message) return reply.status(404).send({ code: 404, message: 'Unknown message' })
 
@@ -313,7 +313,7 @@ export default async function channelRoutes(app: FastifyInstance) {
         flags: flags ?? message.flags,
         editedAt: new Date(),
       },
-      include: { author: true, reactions: true },
+      include: { author: true, reactions: true, referencedMessage: { include: { author: true } } },
     })
 
     const channel = await prisma.channel.findUnique({ where: { id: channelId } })

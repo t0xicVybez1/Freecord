@@ -273,10 +273,12 @@ model Message {
   deletedAt           DateTime?
   createdAt           DateTime    @default(now())
 
-  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
-  author    User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
-  reactions MessageReaction[]
-  pins      MessagePin[]
+  channel            Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author             User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  referencedMessage  Message?          @relation("MessageReference", fields: [referencedMessageId], references: [id], onDelete: SetNull)
+  replies            Message[]         @relation("MessageReference")
+  reactions          MessageReaction[]
+  pins               MessagePin[]
 
   @@index([channelId])
   @@index([authorId])

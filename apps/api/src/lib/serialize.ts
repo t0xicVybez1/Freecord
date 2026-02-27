@@ -115,10 +115,26 @@ export function serializeMessage(
   msg: Message & {
     author?: User | null
     reactions?: (MessageReaction & { user?: User })[]
+    referencedMessage?: (Message & { author?: User | null }) | null
   },
   currentUserId?: string
 ) {
   const reactions = msg.reactions ? groupReactions(msg.reactions, currentUserId) : []
+
+  const referencedMessage = msg.referencedMessage
+    ? {
+        id: msg.referencedMessage.id,
+        channelId: msg.referencedMessage.channelId,
+        author: msg.referencedMessage.author ? serializeUser(msg.referencedMessage.author) : null,
+        content: msg.referencedMessage.content,
+        type: messageTypeToNumber(msg.referencedMessage.type as string),
+        attachments: msg.referencedMessage.attachments as unknown[],
+        embeds: msg.referencedMessage.embeds as unknown[],
+        flags: msg.referencedMessage.flags,
+        editedAt: msg.referencedMessage.editedAt?.toISOString() ?? null,
+        createdAt: msg.referencedMessage.createdAt.toISOString(),
+      }
+    : null
 
   return {
     id: msg.id,
@@ -137,7 +153,7 @@ export function serializeMessage(
     embeds: msg.embeds as unknown[],
     reactions,
     flags: msg.flags,
-    referencedMessage: null,
+    referencedMessage,
     editedAt: msg.editedAt?.toISOString() ?? null,
     createdAt: msg.createdAt.toISOString(),
   }

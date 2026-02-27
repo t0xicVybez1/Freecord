@@ -140,8 +140,8 @@ async function fetchUserData(userId: string) {
     // We call our own API to get the user data
     // Use internal API URL
     const apiUrl = process.env.API_INTERNAL_URL || `http://localhost:${process.env.API_PORT || '3000'}`
-    const resp = await fetch(`${apiUrl}/api/v1/users/@me/ready`, {
-      headers: { 'X-Internal-Token': process.env.INTERNAL_SECRET || 'internal-secret', 'X-User-Id': userId },
+    const resp = await fetch(`${apiUrl}/internal/users/@me/ready`, {
+      headers: { 'X-Internal-Token': process.env.INTERNAL_TOKEN || 'internal-secret', 'X-User-Id': userId },
     })
     if (!resp.ok) return null
     const data = await resp.json()

@@ -7,7 +7,7 @@ export default async function internalRoutes(app: FastifyInstance) {
   // Authenticate internal requests
   app.addHook('preHandler', async (request, reply) => {
     const token = request.headers['x-internal-token']
-    if (token !== (process.env.INTERNAL_SECRET || 'internal-secret')) {
+    if (token !== (process.env.INTERNAL_TOKEN || 'internal-secret')) {
       return reply.status(401).send({ code: 401, message: 'Unauthorized' })
     }
   })

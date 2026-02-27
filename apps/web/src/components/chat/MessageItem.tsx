@@ -9,6 +9,7 @@ import { api } from '../../lib/api';
 import { renderMarkdown } from '@freecord/markdown';
 import { formatMessageDate, formatTime } from '../../lib/utils';
 import type { Message } from '@freecord/types';
+import { MessageType } from '@freecord/types';
 
 interface MessageItemProps {
   message: Message;
@@ -28,8 +29,8 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
   const [showEmojiBar, setShowEmojiBar] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
-  const isOwn = user?.id === message.author.id;
-  const canEdit = isOwn && message.type === 'DEFAULT';
+  const isOwn = user?.id === message.author?.id;
+  const canEdit = isOwn && message.type === MessageType.DEFAULT;
   const canDelete = isOwn; // simplified; admins can delete too
 
   const handleEdit = useCallback(async () => {
@@ -116,7 +117,7 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
         {message.referencedMessage && (
           <div className="flex items-center gap-2 text-xs text-text-muted mb-1 ml-4 cursor-pointer hover:text-text-header">
             <Reply size={12} className="rotate-180 flex-shrink-0" />
-            <Avatar user={message.referencedMessage.author} size="xs" />
+            <Avatar userId={message.referencedMessage.author?.id || ''} username={message.referencedMessage.author?.username || 'Unknown'} avatarHash={message.referencedMessage.author?.avatar} size={16} />
             <span className="font-medium text-text-interactive">
               {message.referencedMessage.author.displayName || message.referencedMessage.author.username}
             </span>
