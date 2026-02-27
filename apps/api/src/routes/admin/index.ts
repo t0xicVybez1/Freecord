@@ -112,6 +112,11 @@ export default async function adminRoutes(app: FastifyInstance) {
     const user = await prisma.user.findUnique({ where: { id: userId } })
     if (!user) return reply.status(404).send({ code: 404, message: 'User not found' })
 
+    // Staff cannot remove staff status from other staff members
+    if (body.isStaff === false && user.isStaff && user.id !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Cannot remove staff privileges from another staff member' })
+    }
+
     const updateData: Record<string, unknown> = {}
     if (body.isStaff !== undefined) updateData.isStaff = body.isStaff
     if (body.verified !== undefined) updateData.verified = body.verified

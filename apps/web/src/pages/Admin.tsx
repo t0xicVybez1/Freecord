@@ -10,6 +10,44 @@ import {
   Eye, Crown, AlertTriangle, Activity
 } from 'lucide-react'
 
+// ─── Audit action helpers ──────────────────────────────────────────────────────
+
+const AUDIT_ACTION_NAMES: Record<number, { label: string; color: string }> = {
+  1:  { label: 'Guild Update',              color: 'text-yellow-400 bg-yellow-400/10' },
+  10: { label: 'Channel Create',            color: 'text-green-400 bg-green-400/10' },
+  11: { label: 'Channel Update',            color: 'text-yellow-400 bg-yellow-400/10' },
+  12: { label: 'Channel Delete',            color: 'text-red-400 bg-red-400/10' },
+  13: { label: 'Permission Override Create',color: 'text-green-400 bg-green-400/10' },
+  14: { label: 'Permission Override Update',color: 'text-yellow-400 bg-yellow-400/10' },
+  15: { label: 'Permission Override Delete',color: 'text-red-400 bg-red-400/10' },
+  20: { label: 'Member Kick',               color: 'text-orange-400 bg-orange-400/10' },
+  21: { label: 'Member Prune',              color: 'text-orange-400 bg-orange-400/10' },
+  22: { label: 'Member Ban',                color: 'text-red-400 bg-red-400/10' },
+  23: { label: 'Ban Remove',                color: 'text-green-400 bg-green-400/10' },
+  24: { label: 'Member Update',             color: 'text-yellow-400 bg-yellow-400/10' },
+  25: { label: 'Member Role Update',        color: 'text-yellow-400 bg-yellow-400/10' },
+  26: { label: 'Member Move',               color: 'text-blue-400 bg-blue-400/10' },
+  27: { label: 'Member Disconnect',         color: 'text-orange-400 bg-orange-400/10' },
+  28: { label: 'Bot Add',                   color: 'text-purple-400 bg-purple-400/10' },
+  30: { label: 'Role Create',               color: 'text-green-400 bg-green-400/10' },
+  31: { label: 'Role Update',               color: 'text-yellow-400 bg-yellow-400/10' },
+  32: { label: 'Role Delete',               color: 'text-red-400 bg-red-400/10' },
+  40: { label: 'Invite Create',             color: 'text-green-400 bg-green-400/10' },
+  41: { label: 'Invite Update',             color: 'text-yellow-400 bg-yellow-400/10' },
+  42: { label: 'Invite Delete',             color: 'text-red-400 bg-red-400/10' },
+  60: { label: 'Emoji Create',              color: 'text-green-400 bg-green-400/10' },
+  61: { label: 'Emoji Update',              color: 'text-yellow-400 bg-yellow-400/10' },
+  62: { label: 'Emoji Delete',              color: 'text-red-400 bg-red-400/10' },
+  72: { label: 'Message Delete',            color: 'text-red-400 bg-red-400/10' },
+  73: { label: 'Message Bulk Delete',       color: 'text-red-400 bg-red-400/10' },
+  74: { label: 'Message Pin',               color: 'text-blue-400 bg-blue-400/10' },
+  75: { label: 'Message Unpin',             color: 'text-blue-400 bg-blue-400/10' },
+}
+
+function getAuditAction(actionType: number) {
+  return AUDIT_ACTION_NAMES[actionType] ?? { label: `Action #${actionType}`, color: 'text-text-muted bg-bg-secondary' }
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface Stats {
@@ -51,8 +89,9 @@ interface AuditEntry {
   guildId: string | null
   userId: string
   username: string | null
-  actionType: string
+  actionType: number
   targetId: string | null
+  changes: { key: string; oldValue?: unknown; newValue?: unknown }[] | null
   reason: string | null
   createdAt: string
 }
@@ -101,6 +140,7 @@ function ConfirmDialog({ message, onConfirm, onCancel }: {
 // ─── Users Panel ──────────────────────────────────────────────────────────────
 
 function UsersPanel() {
+  const me = useAuthStore(s => s.user)
   const [users, setUsers] = useState<AdminUser[]>([])
   const [total, setTotal] = useState(0)
   const [q, setQ] = useState('')
@@ -278,13 +318,21 @@ function UsersPanel() {
             >
               {isBanned(selected) ? <><Check size={16} /> Unban User</> : <><Ban size={16} /> Ban User</>}
             </button>
-            <button
-              onClick={() => toggleStaff(selected)}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-warning/20 text-warning hover:bg-warning/30 transition-colors"
-            >
-              <Crown size={16} />
-              {selected.isStaff ? 'Remove Staff' : 'Grant Staff'}
-            </button>
+            {/* Staff can grant staff, but cannot remove staff from fellow staff members */}
+            {selected.isStaff && selected.id !== me?.id ? (
+              <div className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-primary text-text-muted cursor-not-allowed opacity-50" title="Staff members cannot remove other staff members">
+                <Crown size={16} />
+                Remove Staff (Protected)
+              </div>
+            ) : (
+              <button
+                onClick={() => toggleStaff(selected)}
+                className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-warning/20 text-warning hover:bg-warning/30 transition-colors"
+              >
+                <Crown size={16} />
+                {selected.isStaff ? 'Remove Staff' : 'Grant Staff'}
+              </button>
+            )}
             <button
               onClick={() => kickSessions(selected)}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium bg-bg-primary text-text-muted hover:text-white transition-colors"
@@ -488,20 +536,34 @@ function AuditLogPanel() {
             <div className="w-8 h-8 border-4 border-brand border-t-transparent rounded-full animate-spin" />
           </div>
         )}
-        {entries.map(e => (
-          <div key={e.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-secondary transition-colors">
-            <div className="w-2 h-2 rounded-full bg-brand mt-1.5 flex-shrink-0" />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-mono bg-bg-secondary text-brand px-1.5 py-0.5 rounded">{e.actionType}</span>
-                {e.username && <span className="text-sm text-text-header">@{e.username}</span>}
-                {e.targetId && <span className="text-xs text-text-muted">→ {e.targetId.slice(0, 12)}...</span>}
+        {entries.map(e => {
+          const { label, color } = getAuditAction(e.actionType)
+          return (
+            <div key={e.id} className="flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-bg-secondary transition-colors">
+              <div className="w-2 h-2 rounded-full bg-brand mt-2 flex-shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded ${color}`}>{label}</span>
+                  {e.username && <span className="text-sm text-text-header font-medium">@{e.username}</span>}
+                  {e.targetId && <span className="text-xs text-text-muted font-mono">→ {e.targetId.slice(0, 18)}…</span>}
+                </div>
+                {e.changes && e.changes.length > 0 && (
+                  <div className="mt-1 space-y-0.5">
+                    {e.changes.map((c, i) => (
+                      <p key={i} className="text-xs text-text-muted">
+                        <span className="text-text-header">{c.key}</span>
+                        {c.oldValue !== undefined && <span className="line-through opacity-60"> {String(c.oldValue)}</span>}
+                        {c.newValue !== undefined && <span className="text-green-400"> → {String(c.newValue)}</span>}
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {e.reason && <p className="text-xs text-text-muted italic mt-0.5">"{e.reason}"</p>}
               </div>
-              {e.reason && <p className="text-xs text-text-muted mt-0.5">{e.reason}</p>}
+              <p className="text-xs text-text-muted flex-shrink-0 whitespace-nowrap">{new Date(e.createdAt).toLocaleString()}</p>
             </div>
-            <p className="text-xs text-text-muted flex-shrink-0">{new Date(e.createdAt).toLocaleString()}</p>
-          </div>
-        ))}
+          )
+        })}
         {entries.length === 0 && !loading && (
           <p className="text-center text-text-muted text-sm py-12">No audit log entries</p>
         )}
