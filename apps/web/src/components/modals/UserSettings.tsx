@@ -40,7 +40,7 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
     setError('');
     setSuccess('');
     try {
-      await api.patch('/users/@me', {
+      await api.patch('/api/v1/users/@me', {
         displayName: displayName || undefined,
         ...(email && currentPassword ? { email, password: currentPassword } : {}),
         ...(newPassword && currentPassword ? { newPassword, password: currentPassword } : {}),

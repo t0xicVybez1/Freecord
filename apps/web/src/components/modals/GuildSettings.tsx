@@ -49,7 +49,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
     setError('');
     setSuccess('');
     try {
-      const updated = await api.patch<Guild>(`/guilds/${guildId}`, { name: name.trim() });
+      const updated = await api.patch<Guild>(`/api/v1/guilds/${guildId}`, { name: name.trim() });
       updateGuild(guildId, updated);
       setSuccess('Server settings saved!');
       setTimeout(() => setSuccess(''), 3000);
@@ -67,7 +67,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
     }
     setLoading(true);
     try {
-      await api.delete(`/guilds/${guildId}`);
+      await api.delete(`/api/v1/guilds/${guildId}`);
       removeGuild(guildId);
       onClose();
       navigate('/channels/@me');
@@ -143,7 +143,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                   const formData = new FormData();
                   formData.append('file', file);
                   try {
-                    const updated = await api.upload<Guild>(`/guilds/${guildId}/icon`, formData);
+                    const updated = await api.upload<Guild>(`/api/v1/guilds/${guildId}/icon`, formData);
                     updateGuild(guildId, updated);
                   } catch {}
                 }} />

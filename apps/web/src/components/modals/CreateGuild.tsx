@@ -27,7 +27,7 @@ export function CreateGuildModal({ onClose }: CreateGuildProps) {
     setLoading(true);
     setError('');
     try {
-      const guild = await api.post<Guild>('/guilds', { name: name.trim() });
+      const guild = await api.post<Guild>('/api/v1/guilds', { name: name.trim() });
       addGuild(guild);
       onClose();
     } catch (e: any) {
