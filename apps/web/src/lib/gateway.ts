@@ -22,7 +22,11 @@ export class GatewayClient {
   }
 
   private _connect() {
-    this.ws?.close()
+    if (this.ws) {
+      this.ws.onclose = null // prevent old socket's close from triggering another reconnect
+      this.ws.onerror = null
+      this.ws.close()
+    }
     this.ws = new WebSocket(this.url)
     this.ws.onopen = () => { this.reconnectAttempts = 0 }
     this.ws.onmessage = (e) => {
