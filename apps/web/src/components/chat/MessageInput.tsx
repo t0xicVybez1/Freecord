@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus, Smile, X, FileText } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { Tooltip } from '../ui/Tooltip';
 import { Avatar } from '../ui/Avatar';
 import { EmojiPicker } from '../ui/EmojiPicker';
@@ -64,7 +65,7 @@ export function MessageInput({
   // Guild context for autocomplete
   const channel = useChannelsStore(s => s.getChannel(channelId));
   const guild = useGuildsStore(s => channel?.guildId ? s.guilds[channel.guildId] : undefined);
-  const guildChannels = useChannelsStore(s => channel?.guildId ? s.getGuildChannels(channel.guildId) : []);
+  const guildChannels = useChannelsStore(useShallow(s => channel?.guildId ? s.getGuildChannels(channel.guildId) : []));
 
   // Build mention candidates
   const mentionCandidates = (() => {
