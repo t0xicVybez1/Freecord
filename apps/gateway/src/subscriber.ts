@@ -54,6 +54,14 @@ function dispatchEvent(event: GatewayEvent, connManager: ConnectionManager) {
     return
   }
 
+  // When a new member joins a guild, subscribe their live connection to that guild's events
+  if (event.type === 'GUILD_MEMBER_ADD' && event.guildId) {
+    const userId = (event.data as any)?.user?.id
+    if (userId) {
+      connManager.subscribeToGuild(userId, event.guildId)
+    }
+  }
+
   // Guild events — fan out to all guild members online
   if (event.guildId) {
     connManager.sendToGuild(event.guildId, payload)

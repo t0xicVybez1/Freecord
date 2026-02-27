@@ -98,6 +98,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   // Members state
   const [members, setMembers] = useState<GuildMember[]>([]);
   const [membersLoading, setMembersLoading] = useState(false);
+  const [rolePickerMemberId, setRolePickerMemberId] = useState<string | null>(null);
 
   // Invites state
   const [invites, setInvites] = useState<InviteData[]>([]);
@@ -116,6 +117,14 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const [editHoist, setEditHoist] = useState(false);
   const [editMentionable, setEditMentionable] = useState(false);
   const [roleSaving, setRoleSaving] = useState(false);
+
+  // Close role picker on outside click
+  useEffect(() => {
+    if (!rolePickerMemberId) return;
+    const handler = () => setRolePickerMemberId(null);
+    window.addEventListener('click', handler);
+    return () => window.removeEventListener('click', handler);
+  }, [rolePickerMemberId]);
 
   if (!guild) return null;
 
@@ -185,6 +194,28 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
       setMembers(prev => prev.filter(m => m.user.id !== userId));
     } catch (e: any) {
       setError(e.message || 'Failed to kick member');
+    }
+  };
+
+  const handleAddRole = async (userId: string, roleId: string) => {
+    try {
+      await api.put(`/api/v1/guilds/${guildId}/members/${userId}/roles/${roleId}`)
+      setMembers(prev => prev.map(m =>
+        m.user.id === userId ? { ...m, roles: [...m.roles, roleId] } : m
+      ))
+    } catch (e: any) {
+      setError(e.message || 'Failed to add role')
+    }
+  };
+
+  const handleRemoveRole = async (userId: string, roleId: string) => {
+    try {
+      await api.delete(`/api/v1/guilds/${guildId}/members/${userId}/roles/${roleId}`)
+      setMembers(prev => prev.map(m =>
+        m.user.id === userId ? { ...m, roles: m.roles.filter(r => r !== roleId) } : m
+      ))
+    } catch (e: any) {
+      setError(e.message || 'Failed to remove role')
     }
   };
 
@@ -419,7 +450,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                     {members.length} Members
                   </p>
                   {members.map(member => (
-                    <div key={member.user.id} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                    <div key={member.user.id} className="flex items-start gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
                       <Avatar
                         userId={member.user.id}
                         username={member.user.username}
@@ -434,10 +465,55 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                           )}
                         </p>
                         <p className="text-text-muted text-xs">Joined {formatDate(member.joinedAt)}</p>
+                        {/* Role pills */}
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {member.roles.map(roleId => {
+                            const role = guild.roles.find(r => r.id === roleId);
+                            if (!role || role.name === '@everyone') return null;
+                            const hex = colorToHex(role.color);
+                            return (
+                              <span key={roleId} className="flex items-center gap-0.5 text-xs px-1.5 py-0.5 rounded-full"
+                                style={{ backgroundColor: hex + '33', color: hex, border: `1px solid ${hex}66` }}>
+                                {role.name}
+                                {isOwner && member.user.id !== guild.ownerId && (
+                                  <button className="ml-0.5 opacity-60 hover:opacity-100" onClick={() => handleRemoveRole(member.user.id, roleId)}>
+                                    <X size={10} />
+                                  </button>
+                                )}
+                              </span>
+                            );
+                          })}
+                          {isOwner && member.user.id !== guild.ownerId && (
+                            <div className="relative" onClick={e => e.stopPropagation()}>
+                              <button
+                                className="text-xs text-text-muted hover:text-white px-1.5 py-0.5 rounded border border-white/20 hover:border-white/40 transition-colors"
+                                onClick={() => setRolePickerMemberId(rolePickerMemberId === member.user.id ? null : member.user.id)}
+                              >
+                                + Role
+                              </button>
+                              {rolePickerMemberId === member.user.id && (
+                                <div className="absolute left-0 top-full mt-1 z-10 bg-bg-floating border border-black/30 rounded shadow-xl min-w-36 py-1">
+                                  {guild.roles.filter(r => r.name !== '@everyone' && !member.roles.includes(r.id)).map(role => (
+                                    <button key={role.id}
+                                      className="w-full flex items-center gap-2 px-3 py-1.5 text-sm text-text-header hover:bg-white/[0.06] text-left"
+                                      onClick={() => { handleAddRole(member.user.id, role.id); setRolePickerMemberId(null); }}
+                                    >
+                                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: colorToHex(role.color) }} />
+                                      {role.name}
+                                    </button>
+                                  ))}
+                                  {guild.roles.filter(r => r.name !== '@everyone' && !member.roles.includes(r.id)).length === 0 && (
+                                    <p className="px-3 py-1.5 text-xs text-text-muted">All roles assigned</p>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {isOwner && member.user.id !== user?.id && member.user.id !== guild.ownerId && (
                         <button
-                          className="flex items-center gap-1 text-xs text-danger hover:bg-danger/10 px-2 py-1 rounded transition-colors"
+                          className="flex items-center gap-1 text-xs text-danger hover:bg-danger/10 px-2 py-1 rounded transition-colors flex-shrink-0"
                           onClick={() => handleKick(member.user.id)}
                         >
                           <UserX size={14} />

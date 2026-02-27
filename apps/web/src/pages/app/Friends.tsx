@@ -46,10 +46,13 @@ export default function FriendsPage() {
     setAddStatus('loading')
     try {
       const [username, discrim] = addUsername.split('#')
-      await api.post(`/api/v1/users/@me/relationships/find`, { username, discriminator: discrim || '0' })
+      await api.post(`/api/v1/users/@me/relationships/find`, { username, discriminator: discrim || undefined })
       setAddStatus('success')
       setAddMsg(`Friend request sent to ${addUsername}!`)
       setAddUsername('')
+      // Re-fetch to immediately reflect pending outgoing request
+      const rels = await api.get<Relationship[]>('/api/v1/users/@me/relationships')
+      setRelationships(rels)
     } catch (err: any) {
       setAddStatus('error')
       setAddMsg(err.message || 'Could not send friend request')

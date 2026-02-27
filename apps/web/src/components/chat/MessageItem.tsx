@@ -5,6 +5,8 @@ import { Tooltip } from '../ui/Tooltip';
 import { useAuthStore } from '../../stores/auth';
 import { useMessagesStore } from '../../stores/messages';
 import { useUIStore } from '../../stores/ui';
+import { useChannelsStore } from '../../stores/channels';
+import { useGuildsStore } from '../../stores/guilds';
 import { api } from '../../lib/api';
 import { renderMarkdown } from '@freecord/markdown';
 import { formatMessageDate, formatTime } from '../../lib/utils';
@@ -29,9 +31,13 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
   const [showEmojiBar, setShowEmojiBar] = useState(false);
   const editRef = useRef<HTMLTextAreaElement>(null);
 
+  const channel = useChannelsStore(s => s.getChannel(message.channelId));
+  const guild = useGuildsStore(s => channel?.guildId ? s.getGuild(channel.guildId) : undefined);
+
   const isOwn = user?.id === message.author?.id;
+  const isGuildOwner = !!guild && guild.ownerId === user?.id;
   const canEdit = isOwn && message.type === MessageType.DEFAULT;
-  const canDelete = isOwn; // simplified; admins can delete too
+  const canDelete = isOwn || isGuildOwner;
 
   const handleEdit = useCallback(async () => {
     if (!editContent.trim() || editContent === message.content) {
