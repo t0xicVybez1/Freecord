@@ -125,25 +125,50 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
   return (
     <div className="w-60 bg-bg-secondary flex flex-col flex-shrink-0">
       {/* Guild header */}
-      <button
-        className="flex items-center justify-between px-4 py-3 border-b border-black/20 hover:bg-white/[0.06] transition-colors font-semibold text-white text-sm"
-        onClick={() => openModal({ type: 'GUILD_SETTINGS', data: { guildId } })}
-      >
-        <span className="truncate">{guild.name}</span>
-        <ChevronDown size={18} className="text-text-muted flex-shrink-0" />
-      </button>
+      <div className="flex items-center border-b border-black/20 flex-shrink-0">
+        <button
+          className="flex items-center gap-1 flex-1 px-4 py-3 hover:bg-white/[0.06] transition-colors font-semibold text-white text-sm min-w-0"
+          onClick={() => openModal({ type: 'GUILD_SETTINGS', data: { guildId } })}
+        >
+          <span className="truncate">{guild.name}</span>
+          <ChevronDown size={18} className="text-text-muted flex-shrink-0 ml-auto" />
+        </button>
+        <Tooltip content="Create Channel">
+          <button
+            className="px-3 py-3 text-text-muted hover:text-white transition-colors flex-shrink-0"
+            onClick={() => openModal({ type: 'CREATE_CHANNEL', data: { guildId } })}
+          >
+            <Plus size={18} />
+          </button>
+        </Tooltip>
+      </div>
 
       {/* Channel list */}
       <div className="flex-1 overflow-y-auto py-2 space-y-0.5">
-        {/* Uncategorized channels */}
-        {uncategorized.map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
+        {channels.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center">
+            <Hash size={32} className="text-text-muted" />
+            <p className="text-text-muted text-sm">No channels yet</p>
+            <button
+              className="text-brand text-sm hover:underline"
+              onClick={() => openModal({ type: 'CREATE_CHANNEL', data: { guildId } })}
+            >
+              Create a Channel
+            </button>
+          </div>
+        ) : (
+          <>
+            {/* Uncategorized channels */}
+            {uncategorized.map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
 
-        {/* Categories with their channels */}
-        {categories.map(cat => (
-          <CategoryItem key={cat.id} channel={cat} guildId={guildId}>
-            {getChildren(cat.id).map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
-          </CategoryItem>
-        ))}
+            {/* Categories with their channels */}
+            {categories.map(cat => (
+              <CategoryItem key={cat.id} channel={cat} guildId={guildId}>
+                {getChildren(cat.id).map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
+              </CategoryItem>
+            ))}
+          </>
+        )}
       </div>
 
       <UserPanel />

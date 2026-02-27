@@ -30,7 +30,7 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
   const [success, setSuccess] = useState('');
 
   // Account form state
-  const [displayName, setDisplayName] = useState(user?.displayName || '');
+  const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -90,9 +90,9 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
         {/* User panel at bottom */}
         {user && (
           <div className="p-3 border-t border-[#1e1f22] flex items-center gap-2">
-            <Avatar user={user} size="sm" />
+            <Avatar userId={user.id} username={user.username} avatarHash={user.avatar} size={32} />
             <div className="flex-1 min-w-0">
-              <p className="text-text-header text-sm font-medium truncate">{user.displayName || user.username}</p>
+              <p className="text-text-header text-sm font-medium truncate">{user.username}</p>
               <p className="text-text-muted text-xs truncate">#{user.discriminator}</p>
             </div>
           </div>
@@ -121,7 +121,7 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
               <div className="bg-bg-tertiary rounded-lg p-4">
                 <div className="flex items-center gap-4 mb-4">
                   <div className="relative group cursor-pointer">
-                    <Avatar user={user} size="xl" />
+                    <Avatar userId={user.id} username={user.username} avatarHash={user.avatar} size={80} />
                     <div className="absolute inset-0 bg-black/50 rounded-full opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
                       <p className="text-white text-xs font-bold text-center">CHANGE AVATAR</p>
                     </div>

@@ -1,13 +1,16 @@
-import { useState, useRef } from 'react';
-import { Settings, Shield, Users, Hash, Globe, Trash2, X } from 'lucide-react';
+import { useState, useRef, useEffect } from 'react';
+import { Settings, Shield, Users, Hash, Globe, Trash2, X, Copy, Check, UserX, Ban } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
 import { useGuildsStore } from '../../stores/guilds';
 import { useAuthStore } from '../../stores/auth';
+import { useChannelsStore } from '../../stores/channels';
+import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
-import type { Guild } from '@freecord/types';
+import type { Guild, GuildMember, GuildBan } from '@freecord/types';
+import { ChannelType } from '@freecord/types';
 
 interface GuildSettingsProps {
   guildId: string;
@@ -21,15 +24,29 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode; danger?: bo
   { id: 'roles', label: 'Roles', icon: <Shield size={16} /> },
   { id: 'members', label: 'Members', icon: <Users size={16} /> },
   { id: 'invites', label: 'Invites', icon: <Globe size={16} /> },
-  { id: 'bans', label: 'Bans', icon: <Shield size={16} /> },
+  { id: 'bans', label: 'Bans', icon: <Ban size={16} /> },
   { id: 'delete', label: 'Delete Server', icon: <Trash2 size={16} />, danger: true },
 ];
+
+interface InviteData {
+  code: string;
+  guildId: string;
+  channelId: string;
+  inviterId: string | null;
+  uses: number;
+  maxUses: number;
+  maxAge: number;
+  temporary: boolean;
+  createdAt: string;
+  expiresAt: string | null;
+}
 
 export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const { user } = useAuthStore();
   const { getGuild, updateGuild, removeGuild } = useGuildsStore();
   const navigate = useNavigate();
   const guild = getGuild(guildId);
+  const channels = useChannelsStore(useShallow(s => s.getGuildChannels(guildId)));
 
   const [section, setSection] = useState<Section>('overview');
   const [name, setName] = useState(guild?.name || '');
@@ -39,9 +56,45 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const [deleteConfirm, setDeleteConfirm] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Members state
+  const [members, setMembers] = useState<GuildMember[]>([]);
+  const [membersLoading, setMembersLoading] = useState(false);
+
+  // Invites state
+  const [invites, setInvites] = useState<InviteData[]>([]);
+  const [invitesLoading, setInvitesLoading] = useState(false);
+  const [copiedCode, setCopiedCode] = useState('');
+
+  // Bans state
+  const [bans, setBans] = useState<GuildBan[]>([]);
+  const [bansLoading, setBansLoading] = useState(false);
+
   if (!guild) return null;
 
   const isOwner = guild.ownerId === user?.id;
+
+  // Fetch data when section changes
+  useEffect(() => {
+    if (section === 'members') {
+      setMembersLoading(true);
+      api.get<GuildMember[]>(`/api/v1/guilds/${guildId}/members`)
+        .then(setMembers)
+        .catch(() => {})
+        .finally(() => setMembersLoading(false));
+    } else if (section === 'invites') {
+      setInvitesLoading(true);
+      api.get<InviteData[]>(`/api/v1/guilds/${guildId}/invites`)
+        .then(setInvites)
+        .catch(() => {})
+        .finally(() => setInvitesLoading(false));
+    } else if (section === 'bans') {
+      setBansLoading(true);
+      api.get<GuildBan[]>(`/api/v1/guilds/${guildId}/bans`)
+        .then(setBans)
+        .catch(() => {})
+        .finally(() => setBansLoading(false));
+    }
+  }, [section, guildId]);
 
   const handleSave = async () => {
     if (!name.trim()) return;
@@ -78,6 +131,63 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
     }
   };
 
+  const handleKick = async (userId: string) => {
+    try {
+      await api.delete(`/api/v1/guilds/${guildId}/members/${userId}`);
+      setMembers(prev => prev.filter(m => m.user.id !== userId));
+    } catch (e: any) {
+      setError(e.message || 'Failed to kick member');
+    }
+  };
+
+  const handleCreateInvite = async () => {
+    const textChannel = channels.find(c => c.type === ChannelType.GUILD_TEXT);
+    if (!textChannel) return;
+    setInvitesLoading(true);
+    try {
+      const invite = await api.post<InviteData>(`/api/v1/channels/${textChannel.id}/invites`, {
+        maxAge: 86400,
+        maxUses: 0,
+      });
+      setInvites(prev => [invite, ...prev]);
+    } catch (e: any) {
+      setError(e.message || 'Failed to create invite');
+    } finally {
+      setInvitesLoading(false);
+    }
+  };
+
+  const handleDeleteInvite = async (code: string) => {
+    try {
+      await api.delete(`/api/v1/invites/${code}`);
+      setInvites(prev => prev.filter(i => i.code !== code));
+    } catch (e: any) {
+      setError(e.message || 'Failed to delete invite');
+    }
+  };
+
+  const handleCopyInvite = (code: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}/invite/${code}`);
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(''), 2000);
+  };
+
+  const handleUnban = async (userId: string) => {
+    try {
+      await api.delete(`/api/v1/guilds/${guildId}/bans/${userId}`);
+      setBans(prev => prev.filter(b => b.user.id !== userId));
+    } catch (e: any) {
+      setError(e.message || 'Failed to unban user');
+    }
+  };
+
+  const formatDate = (iso: string) => new Date(iso).toLocaleDateString();
+  const formatExpiry = (iso: string | null) => {
+    if (!iso) return 'Never';
+    const d = new Date(iso);
+    return d < new Date() ? 'Expired' : d.toLocaleDateString();
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex bg-bg-primary">
       {/* Sidebar */}
@@ -89,7 +199,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
           {SECTIONS.filter(s => !s.danger || isOwner).map(s => (
             <button
               key={s.id}
-              onClick={() => setSection(s.id)}
+              onClick={() => { setSection(s.id); setError(''); }}
               className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm transition-colors text-left ${
                 section === s.id
                   ? s.danger ? 'bg-danger/20 text-danger' : 'bg-bg-primary text-text-header'
@@ -169,6 +279,166 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
             </div>
           )}
 
+          {section === 'members' && (
+            <div className="space-y-3">
+              {membersLoading ? (
+                <p className="text-text-muted text-sm">Loading members...</p>
+              ) : members.length === 0 ? (
+                <p className="text-text-muted text-sm">No members found.</p>
+              ) : (
+                <>
+                  <p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
+                    {members.length} Members
+                  </p>
+                  {members.map(member => (
+                    <div key={member.user.id} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                      <Avatar
+                        userId={member.user.id}
+                        username={member.user.username}
+                        avatarHash={member.user.avatar}
+                        size={36}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-header text-sm font-medium truncate">
+                          {member.nickname || member.user.username}
+                          {member.user.id === guild.ownerId && (
+                            <span className="ml-2 text-xs text-brand font-normal">Owner</span>
+                          )}
+                        </p>
+                        <p className="text-text-muted text-xs">Joined {formatDate(member.joinedAt)}</p>
+                      </div>
+                      {isOwner && member.user.id !== user?.id && member.user.id !== guild.ownerId && (
+                        <button
+                          className="flex items-center gap-1 text-xs text-danger hover:bg-danger/10 px-2 py-1 rounded transition-colors"
+                          onClick={() => handleKick(member.user.id)}
+                        >
+                          <UserX size={14} />
+                          Kick
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+              {error && <p className="text-danger text-sm">{error}</p>}
+            </div>
+          )}
+
+          {section === 'roles' && (
+            <div className="space-y-3">
+              <p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
+                {guild.roles.length} Roles
+              </p>
+              {guild.roles.length === 0 ? (
+                <p className="text-text-muted text-sm">No roles yet.</p>
+              ) : (
+                guild.roles
+                  .slice()
+                  .sort((a, b) => b.position - a.position)
+                  .map(role => (
+                    <div key={role.id} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                      <div
+                        className="w-4 h-4 rounded-full flex-shrink-0"
+                        style={{ backgroundColor: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5' }}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-header text-sm font-medium truncate">{role.name}</p>
+                        {role.hoist && <p className="text-text-muted text-xs">Displayed separately</p>}
+                      </div>
+                    </div>
+                  ))
+              )}
+            </div>
+          )}
+
+          {section === 'invites' && (
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
+                  {invites.length} Invites
+                </p>
+                {channels.some(c => c.type === ChannelType.GUILD_TEXT) && (
+                  <Button onClick={handleCreateInvite} loading={invitesLoading} className="text-xs py-1 px-3">
+                    Create Invite
+                  </Button>
+                )}
+              </div>
+              {invitesLoading && invites.length === 0 ? (
+                <p className="text-text-muted text-sm">Loading invites...</p>
+              ) : invites.length === 0 ? (
+                <p className="text-text-muted text-sm">No active invites.</p>
+              ) : (
+                invites.map(invite => (
+                  <div key={invite.code} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-text-header text-sm font-mono font-medium">{invite.code}</p>
+                      <p className="text-text-muted text-xs">
+                        {invite.uses}{invite.maxUses > 0 ? `/${invite.maxUses}` : ''} uses · Expires {formatExpiry(invite.expiresAt)}
+                      </p>
+                    </div>
+                    <button
+                      className="p-1.5 text-text-muted hover:text-white transition-colors"
+                      onClick={() => handleCopyInvite(invite.code)}
+                      title="Copy invite link"
+                    >
+                      {copiedCode === invite.code ? <Check size={15} className="text-success" /> : <Copy size={15} />}
+                    </button>
+                    <button
+                      className="p-1.5 text-text-muted hover:text-danger transition-colors"
+                      onClick={() => handleDeleteInvite(invite.code)}
+                      title="Delete invite"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  </div>
+                ))
+              )}
+              {error && <p className="text-danger text-sm">{error}</p>}
+            </div>
+          )}
+
+          {section === 'bans' && (
+            <div className="space-y-3">
+              {bansLoading ? (
+                <p className="text-text-muted text-sm">Loading bans...</p>
+              ) : bans.length === 0 ? (
+                <div className="bg-bg-tertiary rounded-lg p-8 text-center">
+                  <Ban size={32} className="text-text-muted mx-auto mb-2" />
+                  <p className="text-text-muted text-sm">No bans. This server is a welcoming place!</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
+                    {bans.length} Bans
+                  </p>
+                  {bans.map(ban => (
+                    <div key={ban.user.id} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                      <Avatar
+                        userId={ban.user.id}
+                        username={ban.user.username}
+                        avatarHash={ban.user.avatar}
+                        size={36}
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-header text-sm font-medium truncate">{ban.user.username}</p>
+                        {ban.reason && <p className="text-text-muted text-xs truncate">Reason: {ban.reason}</p>}
+                      </div>
+                      {isOwner && (
+                        <button
+                          className="flex items-center gap-1 text-xs text-brand hover:bg-brand/10 px-2 py-1 rounded transition-colors"
+                          onClick={() => handleUnban(ban.user.id)}
+                        >
+                          Unban
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </>
+              )}
+              {error && <p className="text-danger text-sm">{error}</p>}
+            </div>
+          )}
+
           {section === 'delete' && isOwner && (
             <div className="space-y-4">
               <div className="bg-danger/10 border border-danger/30 rounded-lg p-4">
@@ -195,14 +465,6 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                 <Trash2 size={16} />
                 Delete Server
               </Button>
-            </div>
-          )}
-
-          {(section === 'roles' || section === 'members' || section === 'invites' || section === 'bans') && (
-            <div className="bg-bg-tertiary rounded-lg p-8 text-center">
-              <p className="text-text-muted">
-                {section.charAt(0).toUpperCase() + section.slice(1)} management coming soon.
-              </p>
             </div>
           )}
         </div>
