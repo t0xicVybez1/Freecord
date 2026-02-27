@@ -17,6 +17,10 @@ interface MessagesState {
   addMessage: (channelId: string, message: Message) => void
   updateMessage: (channelId: string, messageId: string, data: Partial<Message>) => void
   removeMessage: (channelId: string, messageId: string) => void
+  removeMessages: (channelId: string, messageIds: string[]) => void
+  addReaction: (channelId: string, messageId: string, emoji: { id: string | null; name: string; animated: boolean }, userId: string, isMe: boolean) => void
+  removeReaction: (channelId: string, messageId: string, emoji: { id: string | null; name: string; animated: boolean }, userId: string, isMe: boolean) => void
+  clearReactions: (channelId: string, messageId: string) => void
   setLoading: (channelId: string, loading: boolean) => void
   reset: () => void
 }
@@ -78,6 +82,70 @@ export const useMessagesStore = create<MessagesState>((set, get) => ({
     const messages = { ...existing.messages }
     delete messages[messageId]
     return { channels: { ...s.channels, [channelId]: { ...existing, messages, orderedIds: existing.orderedIds.filter(id => id !== messageId) } } }
+  }),
+
+  removeMessages: (channelId, messageIds) => set(s => {
+    const existing = s.channels[channelId]
+    if (!existing) return s
+    const messages = { ...existing.messages }
+    const idSet = new Set(messageIds)
+    idSet.forEach(id => delete messages[id])
+    return {
+      channels: {
+        ...s.channels,
+        [channelId]: { ...existing, messages, orderedIds: existing.orderedIds.filter(id => !idSet.has(id)) },
+      },
+    }
+  }),
+
+  addReaction: (channelId, messageId, emoji, _userId, isMe) => set(s => {
+    const existing = s.channels[channelId]
+    if (!existing?.messages[messageId]) return s
+    const msg = existing.messages[messageId]
+    const reactions = [...(msg.reactions || [])]
+    const idx = reactions.findIndex(r => r.emoji.name === emoji.name && r.emoji.id === emoji.id)
+    if (idx >= 0) {
+      reactions[idx] = { ...reactions[idx], count: reactions[idx].count + 1, me: reactions[idx].me || isMe }
+    } else {
+      reactions.push({ emoji, count: 1, me: isMe })
+    }
+    return {
+      channels: {
+        ...s.channels,
+        [channelId]: { ...existing, messages: { ...existing.messages, [messageId]: { ...msg, reactions } } },
+      },
+    }
+  }),
+
+  removeReaction: (channelId, messageId, emoji, _userId, isMe) => set(s => {
+    const existing = s.channels[channelId]
+    if (!existing?.messages[messageId]) return s
+    const msg = existing.messages[messageId]
+    const reactions = [...(msg.reactions || [])]
+    const idx = reactions.findIndex(r => r.emoji.name === emoji.name && r.emoji.id === emoji.id)
+    if (idx >= 0) {
+      const updated = { ...reactions[idx], count: reactions[idx].count - 1, me: isMe ? false : reactions[idx].me }
+      if (updated.count <= 0) reactions.splice(idx, 1)
+      else reactions[idx] = updated
+    }
+    return {
+      channels: {
+        ...s.channels,
+        [channelId]: { ...existing, messages: { ...existing.messages, [messageId]: { ...msg, reactions } } },
+      },
+    }
+  }),
+
+  clearReactions: (channelId, messageId) => set(s => {
+    const existing = s.channels[channelId]
+    if (!existing?.messages[messageId]) return s
+    const msg = existing.messages[messageId]
+    return {
+      channels: {
+        ...s.channels,
+        [channelId]: { ...existing, messages: { ...existing.messages, [messageId]: { ...msg, reactions: [] } } },
+      },
+    }
   }),
 
   setLoading: (channelId, loading) => set(s => ({

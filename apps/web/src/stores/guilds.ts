@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { Guild } from '@freecord/types'
+import type { Guild, GuildMember } from '@freecord/types'
 
 interface GuildsState {
   guilds: Record<string, Guild>
@@ -10,6 +10,9 @@ interface GuildsState {
   addGuild: (guild: Guild) => void
   updateGuild: (id: string, data: Partial<Guild>) => void
   removeGuild: (id: string) => void
+  addGuildMember: (guildId: string, member: GuildMember) => void
+  removeGuildMember: (guildId: string, userId: string) => void
+  updateGuildMember: (guildId: string, member: GuildMember) => void
   reset: () => void
 }
 
@@ -38,6 +41,34 @@ export const useGuildsStore = create<GuildsState>((set, get) => ({
     const guilds = { ...s.guilds }
     delete guilds[id]
     return { guilds, guildIds: s.guildIds.filter(gid => gid !== id) }
+  }),
+
+  addGuildMember: (guildId, member) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    const members = guild.members || []
+    if (members.some(m => m.user.id === member.user.id)) return s
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, members: [...members, member] } } }
+  }),
+
+  removeGuildMember: (guildId, userId) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    return {
+      guilds: {
+        ...s.guilds,
+        [guildId]: { ...guild, members: (guild.members || []).filter(m => m.user.id !== userId) },
+      },
+    }
+  }),
+
+  updateGuildMember: (guildId, member) => set(s => {
+    const guild = s.guilds[guildId]
+    if (!guild) return s
+    const members = (guild.members || []).map(m =>
+      m.user.id === member.user.id ? { ...m, ...member } : m
+    )
+    return { guilds: { ...s.guilds, [guildId]: { ...guild, members } } }
   }),
 
   reset: () => set({ guilds: {}, guildIds: [] }),
