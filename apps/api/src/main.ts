@@ -52,6 +52,7 @@ async function build() {
   await app.register(import('./routes/webhooks/execute.js'), { prefix: '/api/v1/webhooks' })
   await app.register(import('./routes/voice/index.js'), { prefix: '/api/v1/voice' })
   await app.register(import('./routes/internal/index.js'), { prefix: '/internal' })
+  await app.register(import('./routes/admin/index.js'), { prefix: '/api/v1/admin' })
 
   // Error handler
   app.setErrorHandler((error, request, reply) => {

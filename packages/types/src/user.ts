@@ -36,6 +36,7 @@ export interface PrivateUser extends User {
   email: string
   phone: string | null
   twoFactorEnabled: boolean
+  isStaff: boolean
 }
 
 export interface UserSettings {

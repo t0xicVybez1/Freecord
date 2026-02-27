@@ -198,6 +198,10 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   // Permission overwrites: map of roleId -> { allow: bigint, deny: bigint }
   const [overwrites, setOverwrites] = useState<Record<string, { allow: bigint; deny: bigint }>>({});
   const [overwritesSaving, setOverwritesSaving] = useState(false);
+  // Channel drag-and-drop reorder
+  const [channelOrder, setChannelOrder] = useState<string[]>([]);
+  const [dragChannelId, setDragChannelId] = useState<string | null>(null);
+  const [reorderSaving, setReorderSaving] = useState(false);
 
   // Close role picker on outside click
   useEffect(() => {
@@ -239,6 +243,10 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
       setAuditLoading(true);
       api.get<{ entries: AuditLogEntry[] }>(`/api/v1/guilds/${guildId}/audit-logs`)
         .then(r => setAuditLog(r.entries || [])).catch(() => {}).finally(() => setAuditLoading(false));
+    } else if (section === 'channels') {
+      // Initialize channel order from current channels (non-category)
+      const nonCat = channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY).sort((a, b) => (a.position || 0) - (b.position || 0));
+      setChannelOrder(nonCat.map(c => c.id));
     }
   }, [section, guildId]);
 
@@ -462,6 +470,33 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
     const url = `${window.location.origin.replace('3000', '3000')}/api/v1/webhooks/${wh.id}/${wh.token}`;
     navigator.clipboard?.writeText(url);
     setCopiedWebhook(wh.id); setTimeout(() => setCopiedWebhook(''), 2000);
+  };
+
+  // Channel reorder drag-and-drop handlers
+  const handleDragStart = (id: string) => setDragChannelId(id);
+  const handleDragOver = (e: React.DragEvent, id: string) => {
+    e.preventDefault();
+    if (!dragChannelId || dragChannelId === id) return;
+    setChannelOrder(prev => {
+      const next = [...prev];
+      const from = next.indexOf(dragChannelId);
+      const to = next.indexOf(id);
+      if (from < 0 || to < 0) return prev;
+      next.splice(from, 1);
+      next.splice(to, 0, dragChannelId);
+      return next;
+    });
+  };
+  const handleDragEnd = async () => {
+    setDragChannelId(null);
+    setReorderSaving(true);
+    try {
+      const positions = channelOrder.map((id, i) => ({ id, position: i }));
+      await api.patch(`/api/v1/guilds/${guildId}/channels`, positions);
+      // Update local store
+      channelOrder.forEach((id, i) => useChannelsStore.getState().updateChannel(id, { position: i }));
+    } catch {}
+    setReorderSaving(false);
   };
 
   // Channel settings handlers
@@ -893,13 +928,25 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
           {section === 'channels' && (
             <div className="flex gap-4" style={{ minHeight: 480 }}>
               <div className="w-48 flex-shrink-0 flex flex-col bg-bg-tertiary rounded-lg overflow-hidden">
+                <div className="px-2 pt-2 pb-1 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-text-muted uppercase tracking-wide">Channels</span>
+                  {reorderSaving && <span className="text-xs text-text-muted">Saving...</span>}
+                </div>
                 <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
-                  {channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY).map(ch => (
-                    <button key={ch.id} onClick={() => selectChannel(ch)}
-                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors truncate ${selectedChannel?.id === ch.id ? 'bg-brand/20 text-white' : 'text-text-muted hover:bg-white/[0.06] hover:text-text-header'}`}>
+                  {(channelOrder.length > 0 ? channelOrder.map(id => channels.find(c => c.id === id)).filter(Boolean) as typeof channels : channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY)).map(ch => (
+                    <div
+                      key={ch.id}
+                      draggable={isOwner}
+                      onDragStart={() => handleDragStart(ch.id)}
+                      onDragOver={e => handleDragOver(e, ch.id)}
+                      onDragEnd={handleDragEnd}
+                      onClick={() => selectChannel(ch)}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors truncate cursor-pointer ${dragChannelId === ch.id ? 'opacity-40' : ''} ${selectedChannel?.id === ch.id ? 'bg-brand/20 text-white' : 'text-text-muted hover:bg-white/[0.06] hover:text-text-header'}`}
+                    >
+                      {isOwner && <span className="text-text-muted cursor-grab flex-shrink-0" title="Drag to reorder">⠿</span>}
                       {channelIcon(ch)}
                       <span className="truncate">{ch.name}</span>
-                    </button>
+                    </div>
                   ))}
                 </div>
               </div>

@@ -390,7 +390,8 @@ run_migrations() {
   set +a
 
   pnpm --filter @freecord/api run db:generate
-  pnpm --filter @freecord/api run db:migrate
+  # db:push applies schema directly (no migration files required for initial setup)
+  pnpm --filter @freecord/api run db:push
 
   log_info "Database migrations completed"
 }

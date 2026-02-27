@@ -18,6 +18,7 @@ interface MessageItemProps {
   message: Message;
   isGrouped: boolean;
   onReply: (message: Message) => void;
+  selectMode?: boolean;
 }
 
 const REACTIONS_EMOJI = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
@@ -59,7 +60,7 @@ function SystemMessage({ message }: { message: Message }) {
   );
 }
 
-export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
+export function MessageItem({ message, isGrouped, onReply, selectMode }: MessageItemProps) {
   const { user } = useAuthStore();
   const { updateMessage, removeMessage } = useMessagesStore();
   const { openContextMenu } = useUIStore();
@@ -310,7 +311,7 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
         </div>
 
         {/* Hover action bar */}
-        {isHovered && !isEditing && (
+        {isHovered && !isEditing && !selectMode && (
           <div className="absolute right-4 top-0 -translate-y-1/2 flex items-center bg-bg-secondary border border-[#1e1f22] rounded shadow-lg z-10">
             <div className="flex">
               {REACTIONS_EMOJI.slice(0, 3).map(emoji => (

@@ -9,6 +9,7 @@ import GuildChannelPage from './pages/app/GuildChannel'
 import DirectMessagePage from './pages/app/DirectMessage'
 import HomePage from './pages/app/Home'
 import InvitePage from './pages/Invite'
+import AdminPage from './pages/Admin'
 
 function RedirectInvite() {
   const { code } = useParams<{ code: string }>()
@@ -46,4 +47,6 @@ export const router = createBrowserRouter([
   { path: '/invite/:code', element: <InvitePage /> },
   // Redirect plural /invites/:code → /invite/:code
   { path: '/invites/:code', element: <RedirectInvite /> },
+  // Staff-only admin portal (access controlled inside AdminPage)
+  { path: '/admin', element: <ProtectedRoute><AdminPage /></ProtectedRoute> },
 ])

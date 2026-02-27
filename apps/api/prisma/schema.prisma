@@ -64,6 +64,7 @@ model User {
   system           Boolean    @default(false)
   bot              Boolean    @default(false)
   verified         Boolean    @default(true)
+  isStaff          Boolean    @default(false)
   twoFactorEnabled Boolean    @default(false)
   twoFactorSecret  String?
   backupCodes      String[]   @default([])

@@ -5,7 +5,8 @@ import { useUsersStore } from '@/stores/users'
 import { Avatar } from '@/components/ui/Avatar'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { api } from '@/lib/api'
-import { Mic, MicOff, Headphones, HeadphoneOff, Settings, Circle } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { Mic, MicOff, Headphones, HeadphoneOff, Settings, Circle, Shield } from 'lucide-react'
 import type { PrivateUser } from '@freecord/types'
 import { UserStatus } from '@freecord/types'
 
@@ -22,7 +23,9 @@ export function UserPanel() {
   const setPresence = useUsersStore(s => s.setPresence)
   const { selfMute, selfDeaf, setSelfMute, setSelfDeaf } = useVoiceStore()
   const { openModal, openContextMenu } = useUIStore()
+  const navigate = useNavigate()
   if (!user) return null
+  const isStaff = (user as any).isStaff === true
 
   const handleStatusMenu = (e: React.MouseEvent) => {
     e.stopPropagation()
@@ -66,6 +69,14 @@ export function UserPanel() {
             {selfDeaf ? <HeadphoneOff size={18} /> : <Headphones size={18} />}
           </button>
         </Tooltip>
+        {isStaff && (
+          <Tooltip content="Staff Portal">
+            <button onClick={() => navigate('/admin')}
+              className="p-1.5 rounded text-warning hover:bg-warning/10 transition-colors">
+              <Shield size={18} />
+            </button>
+          </Tooltip>
+        )}
         <Tooltip content="User Settings">
           <button onClick={() => openModal({ type: 'USER_SETTINGS' })}
             className="p-1.5 rounded text-interactive-normal hover:bg-white/[0.06] hover:text-white transition-colors">

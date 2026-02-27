@@ -1,7 +1,7 @@
 import type { User, Guild, Channel, GuildMember, Role, Message, MessageReaction, DirectMessageMember } from '@prisma/client'
 
 // Serialize user for public consumption
-export function serializeUser(user: User, isSelf = false) {
+export function serializeUser(user: User & { isStaff?: boolean }, isSelf = false, isAdmin = false) {
   const base = {
     id: user.id,
     username: user.username,
@@ -16,12 +16,13 @@ export function serializeUser(user: User, isSelf = false) {
     bot: user.bot,
     system: user.system,
     verified: user.verified,
+    isStaff: user.isStaff ?? false,
     mfaEnabled: user.twoFactorEnabled,
     locale: user.locale,
     createdAt: user.createdAt.toISOString(),
   }
 
-  if (isSelf) {
+  if (isSelf || isAdmin) {
     return {
       ...base,
       email: user.email,
