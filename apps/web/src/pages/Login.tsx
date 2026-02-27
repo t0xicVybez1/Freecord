@@ -1,5 +1,5 @@
 import { useState, FormEvent } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate, useSearchParams } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -12,6 +12,8 @@ export default function LoginPage() {
   const [mfaRequired, setMfaRequired] = useState(false)
   const [loading, setLoading] = useState(false)
   const login = useAuthStore(s => s.login)
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -19,6 +21,8 @@ export default function LoginPage() {
     setError('')
     try {
       await login(email, password, mfaRequired ? code : undefined)
+      const redirect = searchParams.get('redirect')
+      navigate(redirect || '/channels/@me', { replace: true })
     } catch (err: any) {
       if (err.message === 'mfa_required' || err.code === 400) {
         setMfaRequired(true)

@@ -46,6 +46,11 @@ export default function InvitePage() {
       const firstText = guild.channels?.find(c => c.type === 0 /* GUILD_TEXT */)
       navigate(firstText ? `/channels/${guild.id}/${firstText.id}` : `/channels/${guild.id}`)
     } catch (e: any) {
+      // If already a member, navigate to the guild directly
+      if (e.message?.toLowerCase().includes('already a member') && invite?.guild?.id) {
+        navigate(`/channels/${invite.guild.id}`)
+        return
+      }
       setError(e.message || 'Failed to join server.')
       setJoining(false)
     }
