@@ -107,7 +107,10 @@ export function GuildSidebar() {
 
       {/* Discover */}
       <Tooltip content="Explore Servers" side="right">
-        <div className="w-12 h-12 rounded-full bg-bg-secondary hover:bg-success hover:rounded-2xl flex items-center justify-center cursor-pointer text-success hover:text-white transition-all">
+        <div
+          onClick={() => navigate('/explore')}
+          className="w-12 h-12 rounded-full bg-bg-secondary hover:bg-success hover:rounded-2xl flex items-center justify-center cursor-pointer text-success hover:text-white transition-all"
+        >
           <Compass size={24} />
         </div>
       </Tooltip>

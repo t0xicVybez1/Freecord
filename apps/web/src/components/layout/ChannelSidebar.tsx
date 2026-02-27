@@ -14,7 +14,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { cn } from '@/lib/utils'
 import {
   Hash, Volume2, ChevronDown, ChevronRight, Plus, Settings,
-  UserPlus, Mic, MicOff, LogOut, Lock, Megaphone, MessageSquare, Bell, BellOff, BellRing
+  UserPlus, Mic, MicOff, LogOut, Lock, Megaphone, MessageSquare, Bell, BellOff, BellRing, MessagesSquare
 } from 'lucide-react'
 import type { Channel } from '@freecord/types'
 import { ChannelType } from '@freecord/types'
@@ -194,6 +194,46 @@ function CategoryItem({ channel, guildId, children }: { channel: Channel; guildI
   )
 }
 
+function ThreadBrowserPanel({ threads, guildId, channels }: { threads: Channel[]; guildId: string; channels: Channel[] }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+
+  if (threads.length === 0) return null
+
+  return (
+    <div className="border-t border-black/20 flex-shrink-0">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center gap-2 px-3 py-2 text-interactive-muted hover:text-interactive-hover text-xs font-semibold uppercase tracking-wide"
+      >
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <MessagesSquare size={12} />
+        <span>Active Threads ({threads.length})</span>
+      </button>
+      {open && (
+        <div className="pb-2 max-h-48 overflow-y-auto space-y-0.5">
+          {threads.map(thread => {
+            const parent = channels.find(c => c.id === thread.parentId)
+            return (
+              <button
+                key={thread.id}
+                onClick={() => navigate(`/channels/${guildId}/${thread.id}`)}
+                className="w-full flex items-start gap-2 px-3 py-1.5 text-left hover:bg-white/[0.06] transition-colors group"
+              >
+                <MessageSquare size={13} className="text-text-muted flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-interactive-normal text-xs truncate group-hover:text-white">{thread.name}</p>
+                  {parent && <p className="text-text-muted text-[10px] truncate">#{parent.name}</p>}
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export function ChannelSidebar({ guildId }: { guildId: string }) {
   const guild = useGuildsStore(s => s.guilds[guildId])
   const channels = useChannelsStore(useShallow(s => s.getGuildChannels(guildId)))
@@ -275,6 +315,7 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
         )}
       </div>
 
+      <ThreadBrowserPanel threads={threads} guildId={guildId} channels={channels} />
       <UserPanel />
     </div>
   )

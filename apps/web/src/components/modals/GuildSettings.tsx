@@ -2,7 +2,8 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Settings, Shield, Users, Hash, Globe, Trash2, X, Copy, Check,
   UserX, Ban, Plus, Webhook, Smile, FileText, Crown, ChevronRight,
-  Lock, Volume2, Megaphone, Mic, MicOff, Headphones, VolumeX
+  Lock, Volume2, Megaphone, Mic, MicOff, Headphones, VolumeX,
+  Calendar, ShieldAlert, Link2, Eye
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -60,7 +61,7 @@ interface GuildSettingsProps {
   onClose: () => void;
 }
 
-type Section = 'overview' | 'roles' | 'members' | 'channels' | 'emojis' | 'webhooks' | 'audit-log' | 'invites' | 'bans' | 'delete';
+type Section = 'overview' | 'roles' | 'members' | 'channels' | 'emojis' | 'webhooks' | 'audit-log' | 'invites' | 'bans' | 'delete' | 'vanity-url' | 'scheduled-events' | 'automod';
 
 const SECTIONS: { id: Section; label: string; icon: React.ReactNode; danger?: boolean; separator?: boolean }[] = [
   { id: 'overview', label: 'Overview', icon: <Settings size={16} /> },
@@ -68,7 +69,10 @@ const SECTIONS: { id: Section; label: string; icon: React.ReactNode; danger?: bo
   { id: 'emojis', label: 'Emoji', icon: <Smile size={16} /> },
   { id: 'webhooks', label: 'Webhooks', icon: <Webhook size={16} /> },
   { id: 'channels', label: 'Channels', icon: <Hash size={16} /> },
-  { id: 'members', label: 'Members', icon: <Users size={16} />, separator: true },
+  { id: 'vanity-url', label: 'Vanity URL', icon: <Link2 size={16} /> },
+  { id: 'scheduled-events', label: 'Events', icon: <Calendar size={16} /> },
+  { id: 'automod', label: 'AutoMod', icon: <ShieldAlert size={16} />, separator: true },
+  { id: 'members', label: 'Members', icon: <Users size={16} /> },
   { id: 'invites', label: 'Invites', icon: <Globe size={16} /> },
   { id: 'bans', label: 'Bans', icon: <Ban size={16} /> },
   { id: 'audit-log', label: 'Audit Log', icon: <FileText size={16} />, separator: true },
@@ -122,6 +126,18 @@ interface ChannelEditState {
   slowmode: number;
   bitrate: number;
   userLimit: number;
+}
+
+interface ScheduledEvent {
+  id: string; name: string; description?: string;
+  scheduledStartTime: string; scheduledEndTime?: string;
+  status: number; entityType: number;
+  entityMetadata?: { location?: string };
+}
+
+interface AutoModRule {
+  id: string; name: string; enabled: boolean;
+  triggerType: number; eventType: number; actions: any[];
 }
 
 export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
@@ -203,6 +219,26 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const [dragChannelId, setDragChannelId] = useState<string | null>(null);
   const [reorderSaving, setReorderSaving] = useState(false);
 
+  // Vanity URL state
+  const [vanityCode, setVanityCode] = useState('');
+  const [isPublic, setIsPublic] = useState(false);
+  const [vanityLoading, setVanityLoading] = useState(false);
+  const [vanityMsg, setVanityMsg] = useState('');
+
+  // Scheduled Events state
+  const [events, setEvents] = useState<ScheduledEvent[]>([]);
+  const [eventsLoading, setEventsLoading] = useState(false);
+  const [showEventForm, setShowEventForm] = useState(false);
+  const [newEvent, setNewEvent] = useState({ name: '', description: '', scheduledStartTime: '', scheduledEndTime: '', location: '' });
+  const [eventSaving, setEventSaving] = useState(false);
+
+  // AutoMod state
+  const [automodRules, setAutomodRules] = useState<AutoModRule[]>([]);
+  const [automodLoading, setAutomodLoading] = useState(false);
+  const [showAutomodForm, setShowAutomodForm] = useState(false);
+  const [newRule, setNewRule] = useState({ name: '', triggerType: 1, keyword: '', action: 1 });
+  const [automodSaving, setAutomodSaving] = useState(false);
+
   // Close role picker on outside click
   useEffect(() => {
     if (!rolePickerMemberId) return;
@@ -243,6 +279,18 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
       setAuditLoading(true);
       api.get<{ entries: AuditLogEntry[] }>(`/api/v1/guilds/${guildId}/audit-logs`)
         .then(r => setAuditLog(r.entries || [])).catch(() => {}).finally(() => setAuditLoading(false));
+    } else if (section === 'vanity-url') {
+      api.get<{ code: string | null }>(`/api/v1/guilds/${guildId}/vanity-url`)
+        .then(r => { setVanityCode(r.code || ''); }).catch(() => {})
+      setIsPublic((guild as any).isPublic || false);
+    } else if (section === 'scheduled-events') {
+      setEventsLoading(true);
+      api.get<ScheduledEvent[]>(`/api/v1/guilds/${guildId}/scheduled-events`)
+        .then(setEvents).catch(() => {}).finally(() => setEventsLoading(false));
+    } else if (section === 'automod') {
+      setAutomodLoading(true);
+      api.get<AutoModRule[]>(`/api/v1/guilds/${guildId}/auto-moderation/rules`)
+        .then(setAutomodRules).catch(() => {}).finally(() => setAutomodLoading(false));
     } else if (section === 'channels') {
       // Initialize channel order from current channels (non-category)
       const nonCat = channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY).sort((a, b) => (a.position || 0) - (b.position || 0));
@@ -1371,6 +1419,256 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                   </div>
                 );
               })()}
+            </div>
+          )}
+
+          {/* ── VANITY URL ── */}
+          {section === 'vanity-url' && isOwner && (
+            <div className="space-y-6">
+              <div>
+                <h2 className="text-text-header font-bold text-xl mb-1">Vanity URL</h2>
+                <p className="text-text-muted text-sm">Give your server a custom invite link. The code must be unique and lowercase.</p>
+              </div>
+
+              <div className="flex items-center gap-3 p-4 bg-bg-tertiary rounded-lg">
+                <Eye size={20} className="text-text-muted flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-text-header text-sm font-semibold">Server Visibility</p>
+                  <p className="text-text-muted text-xs">Allow this server to appear in Explore Servers</p>
+                </div>
+                <button
+                  onClick={async () => {
+                    const next = !isPublic;
+                    setIsPublic(next);
+                    try { await api.patch(`/api/v1/guilds/${guildId}`, { isPublic: next }); } catch { setIsPublic(!next); }
+                  }}
+                  className={`w-10 h-6 rounded-full transition-colors relative flex-shrink-0 ${isPublic ? 'bg-brand' : 'bg-bg-floating'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${isPublic ? 'translate-x-5' : 'translate-x-1'}`} />
+                </button>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Custom Invite Code</label>
+                <div className="flex items-center gap-2">
+                  <span className="text-text-muted text-sm flex-shrink-0">{window.location.origin}/invite/</span>
+                  <input
+                    className="flex-1 bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                    placeholder="your-server"
+                    value={vanityCode}
+                    onChange={e => setVanityCode(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))}
+                    maxLength={32}
+                  />
+                </div>
+                {vanityMsg && <p className={`text-sm mt-1 ${vanityMsg.includes('aved') ? 'text-success' : 'text-danger'}`}>{vanityMsg}</p>}
+              </div>
+
+              <Button
+                loading={vanityLoading}
+                onClick={async () => {
+                  setVanityLoading(true); setVanityMsg('');
+                  try {
+                    await api.patch(`/api/v1/guilds/${guildId}/vanity-url`, { code: vanityCode || null });
+                    setVanityMsg('Saved!');
+                  } catch (e: any) {
+                    setVanityMsg(e?.message || 'Failed to save');
+                  } finally { setVanityLoading(false); }
+                }}
+              >
+                Save Vanity URL
+              </Button>
+            </div>
+          )}
+
+          {/* ── SCHEDULED EVENTS ── */}
+          {section === 'scheduled-events' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-text-header font-bold text-xl mb-1">Scheduled Events</h2>
+                  <p className="text-text-muted text-sm">Create and manage events for your community.</p>
+                </div>
+                {isOwner && (
+                  <Button onClick={() => { setShowEventForm(true); setNewEvent({ name: '', description: '', scheduledStartTime: '', scheduledEndTime: '', location: '' }); }}>
+                    <Plus size={16} /> Create Event
+                  </Button>
+                )}
+              </div>
+
+              {showEventForm && (
+                <div className="bg-bg-tertiary rounded-lg p-4 space-y-3">
+                  <h3 className="text-text-header font-semibold">New Event</h3>
+                  <Input label="EVENT NAME" value={newEvent.name} onChange={e => setNewEvent(s => ({ ...s, name: e.target.value }))} />
+                  <div>
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Description</label>
+                    <textarea
+                      className="w-full bg-bg-secondary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none resize-none"
+                      rows={2} maxLength={1000}
+                      value={newEvent.description}
+                      onChange={e => setNewEvent(s => ({ ...s, description: e.target.value }))}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Start Time</label>
+                      <input type="datetime-local" className="w-full bg-bg-secondary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                        value={newEvent.scheduledStartTime} onChange={e => setNewEvent(s => ({ ...s, scheduledStartTime: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">End Time (optional)</label>
+                      <input type="datetime-local" className="w-full bg-bg-secondary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                        value={newEvent.scheduledEndTime} onChange={e => setNewEvent(s => ({ ...s, scheduledEndTime: e.target.value }))} />
+                    </div>
+                  </div>
+                  <Input label="Location (optional)" value={newEvent.location} onChange={e => setNewEvent(s => ({ ...s, location: e.target.value }))} />
+                  <div className="flex gap-2">
+                    <Button loading={eventSaving} disabled={!newEvent.name || !newEvent.scheduledStartTime} onClick={async () => {
+                      setEventSaving(true);
+                      try {
+                        const created = await api.post<ScheduledEvent>(`/api/v1/guilds/${guildId}/scheduled-events`, {
+                          name: newEvent.name, description: newEvent.description || undefined,
+                          scheduledStartTime: new Date(newEvent.scheduledStartTime).toISOString(),
+                          scheduledEndTime: newEvent.scheduledEndTime ? new Date(newEvent.scheduledEndTime).toISOString() : undefined,
+                          entityMetadata: newEvent.location ? { location: newEvent.location } : undefined,
+                          entityType: 3,
+                        });
+                        setEvents(prev => [...prev, created]);
+                        setShowEventForm(false);
+                      } catch {} finally { setEventSaving(false); }
+                    }}>Create Event</Button>
+                    <button className="text-text-muted text-sm hover:text-text-header" onClick={() => setShowEventForm(false)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {eventsLoading ? (
+                <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+              ) : events.length === 0 ? (
+                <div className="text-center py-12 text-text-muted">
+                  <Calendar size={40} className="mx-auto mb-3 opacity-30" />
+                  <p>No scheduled events yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {events.map(ev => (
+                    <div key={ev.id} className="flex items-start gap-3 p-3 bg-bg-tertiary rounded-lg">
+                      <Calendar size={18} className="text-brand flex-shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-header font-semibold text-sm">{ev.name}</p>
+                        {ev.description && <p className="text-text-muted text-xs mt-0.5 line-clamp-1">{ev.description}</p>}
+                        <p className="text-text-muted text-xs mt-1">
+                          {new Date(ev.scheduledStartTime).toLocaleString()}
+                          {ev.scheduledEndTime && ` → ${new Date(ev.scheduledEndTime).toLocaleString()}`}
+                        </p>
+                        {ev.entityMetadata?.location && <p className="text-text-muted text-xs">📍 {ev.entityMetadata.location}</p>}
+                      </div>
+                      {isOwner && (
+                        <button className="text-text-muted hover:text-danger transition-colors flex-shrink-0" onClick={async () => {
+                          try { await api.delete(`/api/v1/guilds/${guildId}/scheduled-events/${ev.id}`); setEvents(prev => prev.filter(e => e.id !== ev.id)); } catch {}
+                        }}><X size={14} /></button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── AUTOMOD ── */}
+          {section === 'automod' && isOwner && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-text-header font-bold text-xl mb-1">AutoMod</h2>
+                  <p className="text-text-muted text-sm">Automatically detect and act on content that violates your rules.</p>
+                </div>
+                <Button onClick={() => { setShowAutomodForm(true); setNewRule({ name: '', triggerType: 1, keyword: '', action: 1 }); }}>
+                  <Plus size={16} /> Add Rule
+                </Button>
+              </div>
+
+              {showAutomodForm && (
+                <div className="bg-bg-tertiary rounded-lg p-4 space-y-3">
+                  <h3 className="text-text-header font-semibold">New Rule</h3>
+                  <Input label="RULE NAME" value={newRule.name} onChange={e => setNewRule(s => ({ ...s, name: e.target.value }))} />
+                  <div>
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Trigger</label>
+                    <select className="w-full bg-bg-secondary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                      value={newRule.triggerType} onChange={e => setNewRule(s => ({ ...s, triggerType: Number(e.target.value) }))}>
+                      <option value={1}>Keyword Filter</option>
+                      <option value={3}>Spam</option>
+                      <option value={4}>Mention Spam</option>
+                    </select>
+                  </div>
+                  {newRule.triggerType === 1 && (
+                    <Input label="KEYWORDS (comma-separated)" value={newRule.keyword}
+                      onChange={e => setNewRule(s => ({ ...s, keyword: e.target.value }))} placeholder="badword1, badword2" />
+                  )}
+                  <div>
+                    <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Action</label>
+                    <select className="w-full bg-bg-secondary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                      value={newRule.action} onChange={e => setNewRule(s => ({ ...s, action: Number(e.target.value) }))}>
+                      <option value={1}>Block Message</option>
+                      <option value={2}>Send Alert</option>
+                      <option value={3}>Timeout Member</option>
+                    </select>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button loading={automodSaving} disabled={!newRule.name} onClick={async () => {
+                      setAutomodSaving(true);
+                      try {
+                        const keywords = newRule.keyword.split(',').map(k => k.trim()).filter(Boolean);
+                        const created = await api.post<AutoModRule>(`/api/v1/guilds/${guildId}/auto-moderation/rules`, {
+                          name: newRule.name, triggerType: newRule.triggerType,
+                          triggerMetadata: keywords.length ? { keywordFilter: keywords } : {},
+                          actions: [{ type: newRule.action }],
+                        });
+                        setAutomodRules(prev => [...prev, created]);
+                        setShowAutomodForm(false);
+                      } catch {} finally { setAutomodSaving(false); }
+                    }}>Create Rule</Button>
+                    <button className="text-text-muted text-sm hover:text-text-header" onClick={() => setShowAutomodForm(false)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {automodLoading ? (
+                <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-brand border-t-transparent rounded-full animate-spin" /></div>
+              ) : automodRules.length === 0 && !showAutomodForm ? (
+                <div className="text-center py-12 text-text-muted">
+                  <ShieldAlert size={40} className="mx-auto mb-3 opacity-30" />
+                  <p>No AutoMod rules yet.</p>
+                  <p className="text-xs mt-1">Add a rule to start automatically moderating content.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {automodRules.map(rule => (
+                    <div key={rule.id} className="flex items-center gap-3 p-3 bg-bg-tertiary rounded-lg">
+                      <ShieldAlert size={18} className={rule.enabled ? 'text-success' : 'text-text-muted'} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-text-header font-semibold text-sm">{rule.name}</p>
+                        <p className="text-text-muted text-xs">
+                          {rule.triggerType === 1 ? 'Keyword' : rule.triggerType === 3 ? 'Spam' : 'Mention Spam'} · {rule.actions.length} action{rule.actions.length !== 1 ? 's' : ''}
+                        </p>
+                      </div>
+                      <button
+                        onClick={async () => {
+                          try {
+                            await api.patch(`/api/v1/guilds/${guildId}/auto-moderation/rules/${rule.id}`, { enabled: !rule.enabled });
+                            setAutomodRules(prev => prev.map(r => r.id === rule.id ? { ...r, enabled: !r.enabled } : r));
+                          } catch {}
+                        }}
+                        className={`w-8 h-5 rounded-full transition-colors relative flex-shrink-0 ${rule.enabled ? 'bg-brand' : 'bg-bg-floating'}`}
+                      >
+                        <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white transition-transform ${rule.enabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </button>
+                      <button className="text-text-muted hover:text-danger transition-colors flex-shrink-0" onClick={async () => {
+                        try { await api.delete(`/api/v1/guilds/${guildId}/auto-moderation/rules/${rule.id}`); setAutomodRules(prev => prev.filter(r => r.id !== rule.id)); } catch {}
+                      }}><X size={14} /></button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

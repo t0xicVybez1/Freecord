@@ -159,21 +159,27 @@ model Guild {
   large                       Boolean  @default(false)
   memberCount                 Int      @default(1)
   maxMembers                  Int      @default(500000)
+  vanityCode                  String?  @unique
+  isPublic                    Boolean  @default(false)
   createdAt                   DateTime @default(now())
   updatedAt                   DateTime @updatedAt
 
-  owner       User          @relation("GuildOwner", fields: [ownerId], references: [id])
-  members     GuildMember[]
-  channels    Channel[]
-  roles       Role[]
-  emojis      Emoji[]
-  bans        GuildBan[]
-  invites     GuildInvite[]
-  auditLogs   AuditLog[]
-  webhooks    Webhook[]
-  voiceStates VoiceState[]
+  owner          User               @relation("GuildOwner", fields: [ownerId], references: [id])
+  members        GuildMember[]
+  channels       Channel[]
+  roles          Role[]
+  emojis         Emoji[]
+  bans           GuildBan[]
+  invites        GuildInvite[]
+  auditLogs      AuditLog[]
+  webhooks       Webhook[]
+  voiceStates    VoiceState[]
+  scheduledEvents GuildScheduledEvent[]
+  autoModRules   AutoModRule[]
+  templates      GuildTemplate[]
 
   @@index([ownerId])
+  @@index([isPublic])
 }
 
 model GuildMember {
@@ -474,4 +480,63 @@ model Presence {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId])
+}
+
+model GuildScheduledEvent {
+  id                 String    @id
+  guildId            String
+  creatorId          String?
+  name               String
+  description        String?
+  scheduledStartTime DateTime
+  scheduledEndTime   DateTime?
+  privacyLevel       Int       @default(2)    // 2 = GUILD_ONLY
+  status             Int       @default(1)    // 1=SCHEDULED 2=ACTIVE 3=COMPLETED 4=CANCELED
+  entityType         Int       @default(3)    // 1=STAGE 2=VOICE 3=EXTERNAL
+  entityId           String?                  // Voice/stage channel ID
+  entityMetadata     Json?                    // location for EXTERNAL
+  image              String?
+  userCount          Int       @default(0)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+model AutoModRule {
+  id              String   @id
+  guildId         String
+  creatorId       String
+  name            String
+  enabled         Boolean  @default(true)
+  eventType       Int      @default(1)     // 1 = MESSAGE_SEND
+  triggerType     Int                       // 1=KEYWORD 2=SPAM 3=KEYWORD_PRESET 4=MENTION_SPAM
+  triggerMetadata Json     @default("{}")   // { keywordFilter: [], presets: [], allowList: [] }
+  actions         Json     @default("[]")   // [{ type: 1|2|3, metadata: {} }] block/alert/timeout
+  exemptRoles     String[] @default([])
+  exemptChannels  String[] @default([])
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+model GuildTemplate {
+  code            String   @id
+  name            String
+  description     String?
+  usageCount      Int      @default(0)
+  creatorId       String
+  guildId         String
+  serializedGuild Json                      // snapshot of guild structure
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
 }

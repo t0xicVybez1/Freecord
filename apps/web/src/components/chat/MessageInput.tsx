@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Plus, Gift, Sticker, Smile } from 'lucide-react';
+import { Plus, Smile, X, FileText } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { Avatar } from '../ui/Avatar';
 import { EmojiPicker } from '../ui/EmojiPicker';
@@ -10,6 +10,17 @@ import { useGuildsStore } from '../../stores/guilds';
 import { useChannelsStore } from '../../stores/channels';
 import { gateway } from '../../lib/gateway';
 import type { Message } from '@freecord/types';
+
+const CDN_BASE = import.meta.env.VITE_CDN_URL || 'http://localhost:3001'
+
+interface PendingAttachment {
+  id: string
+  file: File
+  preview?: string
+  uploading: boolean
+  error?: string
+  result?: { id: string; filename: string; url: string; contentType: string; size: number }
+}
 
 // Detect @mention or #channel query before cursor
 function getMentionQuery(text: string, cursor: number): { type: '@' | '#'; query: string; start: number } | null {
@@ -40,8 +51,8 @@ export function MessageInput({
   const { user } = useAuthStore();
   const { addMessage } = useMessagesStore();
   const [content, setContent] = useState('');
-  const [uploading, setUploading] = useState(false);
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [pendingAttachments, setPendingAttachments] = useState<PendingAttachment[]>([]);
   const [mentionState, setMentionState] = useState<{
     type: '@' | '#'; query: string; start: number; selectedIdx: number;
   } | null>(null);
@@ -156,41 +167,65 @@ export function MessageInput({
     }
   }, [sendTyping]);
 
+  const isUploading = pendingAttachments.some(a => a.uploading)
+
   const handleSend = useCallback(async () => {
     const trimmed = content.trim();
-    if (!trimmed || disabled) return;
+    const readyAttachments = pendingAttachments.filter(a => a.result && !a.uploading)
+    if ((!trimmed && readyAttachments.length === 0) || disabled || isUploading) return;
     setContent('');
     setMentionState(null);
+    setPendingAttachments([]);
     isTypingRef.current = false;
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
 
     try {
       const msg = await api.post<Message>(`/api/v1/channels/${channelId}/messages`, {
         content: trimmed,
+        attachments: readyAttachments.map(a => a.result!),
         ...(replyTo ? { messageReference: { messageId: replyTo.id } } : {}),
       });
       addMessage(channelId, msg);
       onClearReply?.();
     } catch (err) {
-      // restore content on failure
       setContent(trimmed);
     }
-  }, [content, disabled, channelId, replyTo, addMessage, onClearReply]);
+  }, [content, pendingAttachments, disabled, isUploading, channelId, replyTo, addMessage, onClearReply]);
 
-  const handleFileUpload = useCallback(async (files: FileList | null) => {
-    if (!files || files.length === 0) return;
-    setUploading(true);
+  const uploadFileToCDN = useCallback(async (pending: PendingAttachment) => {
+    const formData = new FormData();
+    formData.append('files', pending.file);
     try {
-      const formData = new FormData();
-      Array.from(files).forEach(f => formData.append('files', f));
-      // Upload via CDN first, then send message with attachment URLs
-      // For now, send as multipart to the API
-      const msg = await api.upload<Message>(`/api/v1/channels/${channelId}/messages`, formData);
-      addMessage(channelId, msg);
-    } catch {}
-    setUploading(false);
+      const res = await fetch(`${CDN_BASE}/upload/attachments/${channelId}`, {
+        method: 'POST',
+        body: formData,
+      });
+      if (!res.ok) throw new Error('Upload failed');
+      const data = await res.json();
+      const result = data.attachments?.[0];
+      if (!result) throw new Error('No attachment returned');
+      setPendingAttachments(prev => prev.map(a =>
+        a.id === pending.id ? { ...a, uploading: false, result } : a
+      ));
+    } catch {
+      setPendingAttachments(prev => prev.map(a =>
+        a.id === pending.id ? { ...a, uploading: false, error: 'Upload failed' } : a
+      ));
+    }
+  }, [channelId]);
+
+  const handleFileUpload = useCallback((files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const newAttachments: PendingAttachment[] = Array.from(files).slice(0, 10).map(file => {
+      const id = `${Date.now()}-${Math.random()}`
+      const isImage = file.type.startsWith('image/')
+      const preview = isImage ? URL.createObjectURL(file) : undefined
+      return { id, file, preview, uploading: true }
+    });
+    setPendingAttachments(prev => [...prev, ...newAttachments].slice(0, 10));
+    newAttachments.forEach(a => uploadFileToCDN(a));
     if (fileInputRef.current) fileInputRef.current.value = '';
-  }, [channelId, addMessage]);
+  }, [uploadFileToCDN]);
 
   const handlePaste = useCallback((e: React.ClipboardEvent) => {
     const files = e.clipboardData?.files;
@@ -241,6 +276,40 @@ export function MessageInput({
         </div>
       )}
 
+      {/* Pending attachments preview */}
+      {pendingAttachments.length > 0 && (
+        <div className="flex flex-wrap gap-2 px-2 py-2 mb-1 bg-bg-secondary/50 rounded-lg border border-black/10">
+          {pendingAttachments.map(a => (
+            <div key={a.id} className="relative group">
+              {a.preview ? (
+                <img src={a.preview} alt={a.file.name} className="h-20 w-20 object-cover rounded-lg border border-black/20" />
+              ) : (
+                <div className="h-20 w-28 flex flex-col items-center justify-center bg-bg-secondary rounded-lg border border-black/20 gap-1 px-2">
+                  <FileText size={24} className="text-text-muted" />
+                  <span className="text-text-muted text-[10px] truncate w-full text-center">{a.file.name}</span>
+                </div>
+              )}
+              {a.uploading && (
+                <div className="absolute inset-0 flex items-center justify-center bg-black/40 rounded-lg">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              {a.error && (
+                <div className="absolute inset-0 flex items-center justify-center bg-danger/40 rounded-lg">
+                  <span className="text-white text-xs">Failed</span>
+                </div>
+              )}
+              <button
+                onClick={() => setPendingAttachments(prev => prev.filter(p => p.id !== a.id))}
+                className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-danger rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <X size={10} className="text-white" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Reply banner */}
       {replyTo && (
         <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-bg-secondary rounded-t text-sm text-text-muted border-b border-[#1e1f22]">
@@ -265,7 +334,7 @@ export function MessageInput({
         <Tooltip content="Upload a File" side="top">
           <button
             onClick={() => fileInputRef.current?.click()}
-            disabled={disabled || uploading}
+            disabled={disabled || isUploading}
             className="flex-shrink-0 w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors disabled:opacity-50"
           >
             <Plus size={20} />
@@ -288,7 +357,7 @@ export function MessageInput({
           onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
-          disabled={disabled || uploading}
+          disabled={disabled || isUploading}
           placeholder={disabled ? 'You do not have permission to send messages here.' : `Message #${channelName}`}
           maxLength={MAX_LENGTH}
           rows={1}
@@ -304,22 +373,12 @@ export function MessageInput({
 
         {/* Right action buttons */}
         <div className="flex items-center gap-1 flex-shrink-0">
-          {uploading && (
+          {isUploading && (
             <div className="w-4 h-4 border-2 border-brand border-t-transparent rounded-full animate-spin" />
           )}
-          <Tooltip content="Send a Gift" side="top">
-            <button className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors">
-              <Gift size={18} />
-            </button>
-          </Tooltip>
           <Tooltip content="Open GIF picker" side="top">
             <button className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors font-bold text-xs">
               GIF
-            </button>
-          </Tooltip>
-          <Tooltip content="Open Sticker Picker" side="top">
-            <button className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors">
-              <Sticker size={18} />
             </button>
           </Tooltip>
           <div className="relative">

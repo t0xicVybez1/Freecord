@@ -43,6 +43,7 @@ const updateGuildSchema = z.object({
   mfaLevel: z.number().min(0).max(1).optional(),
   preferredLocale: z.string().optional(),
   features: z.array(z.string()).optional(),
+  isPublic: z.boolean().optional(),
 })
 
 const createChannelSchema = z.object({
@@ -114,6 +115,46 @@ async function getFullGuild(guildId: string, userId: string) {
 }
 
 export default async function guildRoutes(app: FastifyInstance) {
+  // GET /guilds/public - public server discovery (no auth required)
+  app.get('/public', async (request, reply) => {
+    const { q = '', limit = 48, offset = 0 } = request.query as { q?: string; limit?: number; offset?: number }
+    const take = Math.min(Number(limit), 100)
+    const skip = Number(offset)
+
+    const where: any = { isPublic: true }
+    if (q.trim()) {
+      where.OR = [
+        { name: { contains: q.trim(), mode: 'insensitive' } },
+        { description: { contains: q.trim(), mode: 'insensitive' } },
+      ]
+    }
+
+    const [guilds, total] = await Promise.all([
+      prisma.guild.findMany({
+        where,
+        take,
+        skip,
+        orderBy: { members: { _count: 'desc' } },
+        include: { _count: { select: { members: true } } },
+      }),
+      prisma.guild.count({ where }),
+    ])
+
+    return reply.send({
+      guilds: guilds.map(g => ({
+        id: g.id,
+        name: g.name,
+        icon: g.icon,
+        banner: g.banner,
+        description: g.description,
+        approximateMemberCount: g._count.members,
+        features: g.features,
+        vanityUrlCode: g.vanityCode,
+      })),
+      total,
+    })
+  })
+
   // GET /guilds - list user's guilds
   app.get('/', { preHandler: authenticate }, async (request, reply) => {
     const members = await prisma.guildMember.findMany({
@@ -286,6 +327,7 @@ export default async function guildRoutes(app: FastifyInstance) {
     if (body.mfaLevel !== undefined) updateData.mfaLevel = body.mfaLevel
     if (body.preferredLocale !== undefined) updateData.preferredLocale = body.preferredLocale
     if (body.features !== undefined) updateData.features = body.features
+    if (body.isPublic !== undefined) updateData.isPublic = body.isPublic
 
     const updated = await prisma.guild.update({ where: { id: guildId }, data: updateData })
 
@@ -294,6 +336,10 @@ export default async function guildRoutes(app: FastifyInstance) {
       guildId,
       data: updated,
     })
+
+    await prisma.auditLog.create({
+      data: { id: generateId(), guildId, userId: request.userId, targetId: guildId, actionType: 1, changes: updateData as any },
+    }).catch(() => {})
 
     return reply.send(updated)
   })
@@ -432,6 +478,10 @@ export default async function guildRoutes(app: FastifyInstance) {
       guildId,
       data: serialized,
     })
+
+    await prisma.auditLog.create({
+      data: { id: generateId(), guildId, userId: request.userId, targetId: channel.id, actionType: 10, changes: { name: body.name, type: body.type } as any },
+    }).catch(() => {})
 
     return reply.status(201).send(serialized)
   })
@@ -674,6 +724,10 @@ export default async function guildRoutes(app: FastifyInstance) {
       data: { guildId, role: serializeRole(role) },
     })
 
+    await prisma.auditLog.create({
+      data: { id: generateId(), guildId, userId: request.userId, targetId: role.id, actionType: 30, changes: { name: role.name } as any },
+    }).catch(() => {})
+
     return reply.status(201).send(serializeRole(role))
   })
 
@@ -736,6 +790,10 @@ export default async function guildRoutes(app: FastifyInstance) {
       guildId,
       data: { guildId, roleId },
     })
+
+    await prisma.auditLog.create({
+      data: { id: generateId(), guildId, userId: request.userId, targetId: roleId, actionType: 32, changes: { name: role.name } as any },
+    }).catch(() => {})
 
     return reply.status(204).send()
   })
@@ -1180,5 +1238,365 @@ export default async function guildRoutes(app: FastifyInstance) {
     })
 
     return reply.send(voiceStates)
+  })
+
+  // ── Public Guild Join ───────────────────────────────────────────────────────
+
+  // POST /guilds/:guildId/join — join a public guild directly
+  app.post('/:guildId/join', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild) return reply.status(404).send({ code: 404, message: 'Unknown guild' })
+    if (!guild.isPublic) return reply.status(403).send({ code: 403, message: 'This guild is not public' })
+
+    const existing = await prisma.guildMember.findUnique({
+      where: { guildId_userId: { guildId, userId: request.userId } },
+    })
+    if (existing) return reply.status(200).send({ message: 'Already a member' })
+
+    const everyoneRole = await prisma.role.findFirst({ where: { guildId, name: '@everyone' } })
+
+    const member = await prisma.guildMember.create({
+      data: {
+        id: generateId(),
+        guildId,
+        userId: request.userId,
+        roles: everyoneRole ? [everyoneRole.id] : [],
+        permissions: '0',
+      },
+      include: { user: true },
+    })
+
+    await publishEvent({ type: 'GUILD_MEMBER_ADD', guildId, data: serializeGuildMember(member) })
+
+    return reply.status(201).send(serializeGuildMember(member))
+  })
+
+  // ── Vanity URL ──────────────────────────────────────────────────────────────
+
+  // GET /guilds/:guildId/vanity-url
+  app.get('/:guildId/vanity-url', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild) return reply.status(404).send({ code: 404, message: 'Unknown guild' })
+
+    const member = await prisma.guildMember.findUnique({
+      where: { guildId_userId: { guildId, userId: request.userId } },
+    })
+    if (!member) return reply.status(403).send({ code: 403, message: 'Missing access' })
+
+    return reply.send({ code: guild.vanityCode, uses: 0 })
+  })
+
+  // PATCH /guilds/:guildId/vanity-url
+  app.patch('/:guildId/vanity-url', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const { code } = z.object({ code: z.string().min(2).max(32).regex(/^[a-z0-9-]+$/).nullable() }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    if (code) {
+      const existing = await prisma.guild.findFirst({ where: { vanityCode: code, id: { not: guildId } } })
+      if (existing) return reply.status(400).send({ code: 400, message: 'Vanity URL already taken' })
+    }
+
+    const updated = await prisma.guild.update({ where: { id: guildId }, data: { vanityCode: code } })
+    return reply.send({ code: updated.vanityCode })
+  })
+
+  // ── Scheduled Events ────────────────────────────────────────────────────────
+
+  const serializeEvent = (e: any) => ({
+    id: e.id, guildId: e.guildId, creatorId: e.creatorId,
+    name: e.name, description: e.description,
+    scheduledStartTime: e.scheduledStartTime instanceof Date ? e.scheduledStartTime.toISOString() : e.scheduledStartTime,
+    scheduledEndTime: e.scheduledEndTime instanceof Date ? e.scheduledEndTime?.toISOString() : e.scheduledEndTime,
+    privacyLevel: e.privacyLevel, status: e.status,
+    entityType: e.entityType, entityId: e.entityId,
+    entityMetadata: e.entityMetadata, image: e.image,
+    userCount: e.userCount,
+    createdAt: e.createdAt instanceof Date ? e.createdAt.toISOString() : e.createdAt,
+  })
+
+  // GET /guilds/:guildId/scheduled-events
+  app.get('/:guildId/scheduled-events', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const member = await prisma.guildMember.findUnique({
+      where: { guildId_userId: { guildId, userId: request.userId } },
+    })
+    if (!member) return reply.status(403).send({ code: 403, message: 'Missing access' })
+
+    const events = await prisma.guildScheduledEvent.findMany({
+      where: { guildId },
+      orderBy: { scheduledStartTime: 'asc' },
+    })
+    return reply.send(events.map(serializeEvent))
+  })
+
+  // POST /guilds/:guildId/scheduled-events
+  app.post('/:guildId/scheduled-events', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const body = z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().max(1000).optional(),
+      scheduledStartTime: z.string(),
+      scheduledEndTime: z.string().optional(),
+      privacyLevel: z.number().min(1).max(2).optional(),
+      entityType: z.number().min(1).max(3).optional(),
+      entityMetadata: z.object({ location: z.string().optional() }).optional(),
+      image: z.string().optional(),
+    }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild) return reply.status(404).send({ code: 404, message: 'Unknown guild' })
+
+    const member = await prisma.guildMember.findUnique({
+      where: { guildId_userId: { guildId, userId: request.userId } },
+    })
+    if (!member) return reply.status(403).send({ code: 403, message: 'Missing access' })
+
+    const event = await prisma.guildScheduledEvent.create({
+      data: {
+        id: generateId(), guildId, creatorId: request.userId,
+        name: body.name, description: body.description,
+        scheduledStartTime: new Date(body.scheduledStartTime),
+        scheduledEndTime: body.scheduledEndTime ? new Date(body.scheduledEndTime) : null,
+        privacyLevel: body.privacyLevel ?? 2,
+        entityType: body.entityType ?? 3,
+        entityMetadata: body.entityMetadata ?? {},
+        image: body.image,
+      },
+    })
+
+    await publishEvent({ type: 'GUILD_SCHEDULED_EVENT_CREATE', guildId, data: serializeEvent(event) })
+    return reply.status(201).send(serializeEvent(event))
+  })
+
+  // PATCH /guilds/:guildId/scheduled-events/:eventId
+  app.patch('/:guildId/scheduled-events/:eventId', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId, eventId } = request.params as { guildId: string; eventId: string }
+    const body = z.object({
+      name: z.string().min(1).max(100).optional(),
+      description: z.string().max(1000).nullable().optional(),
+      scheduledStartTime: z.string().optional(),
+      scheduledEndTime: z.string().nullable().optional(),
+      status: z.number().min(1).max(4).optional(),
+      entityMetadata: z.object({ location: z.string().optional() }).optional(),
+    }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const event = await prisma.guildScheduledEvent.findFirst({ where: { id: eventId, guildId } })
+    if (!event) return reply.status(404).send({ code: 404, message: 'Unknown scheduled event' })
+
+    const updateData: any = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.description !== undefined) updateData.description = body.description
+    if (body.scheduledStartTime !== undefined) updateData.scheduledStartTime = new Date(body.scheduledStartTime)
+    if (body.scheduledEndTime !== undefined) updateData.scheduledEndTime = body.scheduledEndTime ? new Date(body.scheduledEndTime) : null
+    if (body.status !== undefined) updateData.status = body.status
+    if (body.entityMetadata !== undefined) updateData.entityMetadata = body.entityMetadata
+
+    const updated = await prisma.guildScheduledEvent.update({ where: { id: eventId }, data: updateData })
+    await publishEvent({ type: 'GUILD_SCHEDULED_EVENT_UPDATE', guildId, data: serializeEvent(updated) })
+    return reply.send(serializeEvent(updated))
+  })
+
+  // DELETE /guilds/:guildId/scheduled-events/:eventId
+  app.delete('/:guildId/scheduled-events/:eventId', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId, eventId } = request.params as { guildId: string; eventId: string }
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const event = await prisma.guildScheduledEvent.findFirst({ where: { id: eventId, guildId } })
+    if (!event) return reply.status(404).send({ code: 404, message: 'Unknown scheduled event' })
+
+    await prisma.guildScheduledEvent.delete({ where: { id: eventId } })
+    await publishEvent({ type: 'GUILD_SCHEDULED_EVENT_DELETE', guildId, data: { id: eventId, guildId } })
+    return reply.status(204).send()
+  })
+
+  // ── Auto-Moderation ─────────────────────────────────────────────────────────
+
+  // GET /guilds/:guildId/auto-moderation/rules
+  app.get('/:guildId/auto-moderation/rules', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+    const rules = await prisma.autoModRule.findMany({ where: { guildId } })
+    return reply.send(rules)
+  })
+
+  // POST /guilds/:guildId/auto-moderation/rules
+  app.post('/:guildId/auto-moderation/rules', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const body = z.object({
+      name: z.string().min(1).max(100),
+      eventType: z.number().optional(),
+      triggerType: z.number().min(1).max(5),
+      triggerMetadata: z.record(z.unknown()).optional(),
+      actions: z.array(z.object({
+        type: z.number(),
+        metadata: z.record(z.unknown()).optional(),
+      })).min(1),
+      enabled: z.boolean().optional(),
+      exemptRoles: z.array(z.string()).optional(),
+      exemptChannels: z.array(z.string()).optional(),
+    }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const rule = await prisma.autoModRule.create({
+      data: {
+        id: generateId(), guildId, creatorId: request.userId,
+        name: body.name, eventType: body.eventType ?? 1,
+        triggerType: body.triggerType,
+        triggerMetadata: (body.triggerMetadata ?? {}) as any,
+        actions: body.actions as any,
+        enabled: body.enabled ?? true,
+        exemptRoles: body.exemptRoles ?? [],
+        exemptChannels: body.exemptChannels ?? [],
+      },
+    })
+
+    return reply.status(201).send(rule)
+  })
+
+  // PATCH /guilds/:guildId/auto-moderation/rules/:ruleId
+  app.patch('/:guildId/auto-moderation/rules/:ruleId', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId, ruleId } = request.params as { guildId: string; ruleId: string }
+    const body = z.object({
+      name: z.string().min(1).max(100).optional(),
+      enabled: z.boolean().optional(),
+      actions: z.array(z.object({ type: z.number(), metadata: z.record(z.unknown()).optional() })).optional(),
+      exemptRoles: z.array(z.string()).optional(),
+      exemptChannels: z.array(z.string()).optional(),
+      triggerMetadata: z.record(z.unknown()).optional(),
+    }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const rule = await prisma.autoModRule.findFirst({ where: { id: ruleId, guildId } })
+    if (!rule) return reply.status(404).send({ code: 404, message: 'Unknown rule' })
+
+    const updateData: any = {}
+    if (body.name !== undefined) updateData.name = body.name
+    if (body.enabled !== undefined) updateData.enabled = body.enabled
+    if (body.actions !== undefined) updateData.actions = body.actions
+    if (body.exemptRoles !== undefined) updateData.exemptRoles = body.exemptRoles
+    if (body.exemptChannels !== undefined) updateData.exemptChannels = body.exemptChannels
+    if (body.triggerMetadata !== undefined) updateData.triggerMetadata = body.triggerMetadata
+
+    const updated = await prisma.autoModRule.update({ where: { id: ruleId }, data: updateData })
+    return reply.send(updated)
+  })
+
+  // DELETE /guilds/:guildId/auto-moderation/rules/:ruleId
+  app.delete('/:guildId/auto-moderation/rules/:ruleId', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId, ruleId } = request.params as { guildId: string; ruleId: string }
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const rule = await prisma.autoModRule.findFirst({ where: { id: ruleId, guildId } })
+    if (!rule) return reply.status(404).send({ code: 404, message: 'Unknown rule' })
+
+    await prisma.autoModRule.delete({ where: { id: ruleId } })
+    return reply.status(204).send()
+  })
+
+  // ── Server Templates ────────────────────────────────────────────────────────
+
+  // GET /guilds/templates/:code — resolve template (no auth)
+  app.get('/templates/:code', async (request, reply) => {
+    const { code } = request.params as { code: string }
+    const template = await prisma.guildTemplate.findUnique({ where: { code } })
+    if (!template) return reply.status(404).send({ code: 404, message: 'Unknown template' })
+    return reply.send(template)
+  })
+
+  // GET /guilds/:guildId/templates — list guild templates
+  app.get('/:guildId/templates', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+    const templates = await prisma.guildTemplate.findMany({ where: { guildId } })
+    return reply.send(templates)
+  })
+
+  // POST /guilds/:guildId/templates — create template from guild
+  app.post('/:guildId/templates', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId } = request.params as { guildId: string }
+    const { name, description } = z.object({
+      name: z.string().min(1).max(100),
+      description: z.string().max(120).optional(),
+    }).parse(request.body)
+
+    const guild = await prisma.guild.findUnique({
+      where: { id: guildId },
+      include: { channels: { orderBy: { position: 'asc' } }, roles: { orderBy: { position: 'asc' } } },
+    })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const code = generateRandomString(10)
+    const serializedGuild = {
+      name: guild.name, icon: guild.icon, description: guild.description,
+      verificationLevel: guild.verificationLevel,
+      defaultMessageNotifications: guild.defaultMessageNotifications,
+      explicitContentFilter: guild.explicitContentFilter,
+      channels: guild.channels.map(c => ({
+        name: c.name, type: c.type, topic: c.topic, position: c.position,
+        parentId: c.parentId, nsfw: c.nsfw,
+      })),
+      roles: guild.roles.filter(r => r.name !== '@everyone').map(r => ({
+        name: r.name, color: r.color, hoist: r.hoist,
+        mentionable: r.mentionable, permissions: r.permissions,
+      })),
+    }
+
+    const template = await prisma.guildTemplate.create({
+      data: { code, name, description, creatorId: request.userId, guildId, serializedGuild },
+    })
+    return reply.status(201).send(template)
+  })
+
+  // DELETE /guilds/:guildId/templates/:code
+  app.delete('/:guildId/templates/:code', { preHandler: authenticate }, async (request, reply) => {
+    const { guildId, code } = request.params as { guildId: string; code: string }
+
+    const guild = await prisma.guild.findUnique({ where: { id: guildId } })
+    if (!guild || guild.ownerId !== request.userId) {
+      return reply.status(403).send({ code: 403, message: 'Missing permissions' })
+    }
+
+    const template = await prisma.guildTemplate.findFirst({ where: { code, guildId } })
+    if (!template) return reply.status(404).send({ code: 404, message: 'Unknown template' })
+
+    await prisma.guildTemplate.delete({ where: { code } })
+    return reply.status(204).send()
   })
 }

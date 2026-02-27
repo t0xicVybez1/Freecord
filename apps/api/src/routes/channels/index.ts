@@ -20,6 +20,16 @@ const updateChannelSchema = z.object({
   permissionOverwrites: z.array(z.unknown()).optional(),
 })
 
+const attachmentSchema = z.object({
+  id: z.string(),
+  filename: z.string(),
+  contentType: z.string().optional(),
+  size: z.number().optional(),
+  url: z.string(),
+  width: z.number().optional(),
+  height: z.number().optional(),
+})
+
 const createMessageSchema = z.object({
   content: z.string().max(2000).optional(),
   tts: z.boolean().optional(),
@@ -29,6 +39,7 @@ const createMessageSchema = z.object({
   components: z.array(z.unknown()).optional(),
   stickerIds: z.array(z.string()).optional(),
   flags: z.number().optional(),
+  attachments: z.array(attachmentSchema).max(10).optional(),
 })
 
 async function canAccessChannel(channelId: string, userId: string): Promise<boolean> {
@@ -146,6 +157,12 @@ export default async function channelRoutes(app: FastifyInstance) {
       data: serializeChannel(channel),
     })
 
+    if (channel.guildId) {
+      await prisma.auditLog.create({
+        data: { id: generateId(), guildId: channel.guildId, userId: request.userId, targetId: channelId, actionType: 12, changes: { name: channel.name } as any },
+      }).catch(() => {})
+    }
+
     return reply.send(serializeChannel(channel))
   })
 
@@ -234,8 +251,8 @@ export default async function channelRoutes(app: FastifyInstance) {
     const { channelId } = request.params as { channelId: string }
     const body = createMessageSchema.parse(request.body)
 
-    if (!body.content && (!body.embeds || body.embeds.length === 0)) {
-      return reply.status(400).send({ code: 400, message: 'Message must have content or embeds' })
+    if (!body.content && (!body.embeds || body.embeds.length === 0) && (!body.attachments || body.attachments.length === 0)) {
+      return reply.status(400).send({ code: 400, message: 'Message must have content, embeds, or attachments' })
     }
 
     const canAccess = await canAccessChannel(channelId, request.userId)
@@ -266,6 +283,7 @@ export default async function channelRoutes(app: FastifyInstance) {
         type: messageType as any,
         tts: body.tts ?? false,
         embeds: body.embeds ?? [],
+        attachments: body.attachments ?? [],
         mentionEveryone,
         mentions: userMentions,
         mentionRoles: roleMentions,

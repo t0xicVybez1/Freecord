@@ -5,7 +5,7 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { Mic, MicOff, Headphones, HeadphoneOff, Video, VideoOff, Monitor, PhoneOff, Settings } from 'lucide-react'
 
 export function VoiceControls() {
-  const { channelId, guildId, selfMute, selfDeaf, selfVideo, selfStream, leaveChannel, setSelfMute, setSelfDeaf } = useVoiceStore()
+  const { channelId, guildId, selfMute, selfDeaf, selfVideo, selfStream, leaveChannel, setSelfMute, setSelfDeaf, setSelfVideo, setSelfStream } = useVoiceStore()
   const channel = useChannelsStore(s => channelId ? s.getChannel(channelId) : undefined)
   const guild = useGuildsStore(s => guildId ? s.guilds[guildId] : undefined)
 
@@ -28,6 +28,18 @@ export function VoiceControls() {
           <button onClick={() => setSelfDeaf(!selfDeaf)}
             className={`p-1.5 rounded transition-colors ${selfDeaf ? 'text-danger hover:bg-danger/20' : 'text-text-muted hover:bg-white/[0.06] hover:text-white'}`}>
             {selfDeaf ? <HeadphoneOff size={16} /> : <Headphones size={16} />}
+          </button>
+        </Tooltip>
+        <Tooltip content={selfVideo ? 'Turn Off Camera' : 'Turn On Camera'}>
+          <button onClick={() => setSelfVideo(!selfVideo)}
+            className={`p-1.5 rounded transition-colors ${selfVideo ? 'text-brand hover:bg-brand/20' : 'text-text-muted hover:bg-white/[0.06] hover:text-white'}`}>
+            {selfVideo ? <Video size={16} /> : <VideoOff size={16} />}
+          </button>
+        </Tooltip>
+        <Tooltip content={selfStream ? 'Stop Screen Share' : 'Share Screen'}>
+          <button onClick={() => setSelfStream(!selfStream)}
+            className={`p-1.5 rounded transition-colors ${selfStream ? 'text-brand hover:bg-brand/20' : 'text-text-muted hover:bg-white/[0.06] hover:text-white'}`}>
+            <Monitor size={16} />
           </button>
         </Tooltip>
         <Tooltip content="Disconnect">

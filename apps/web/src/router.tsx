@@ -10,6 +10,7 @@ import DirectMessagePage from './pages/app/DirectMessage'
 import HomePage from './pages/app/Home'
 import InvitePage from './pages/Invite'
 import AdminPage from './pages/Admin'
+import ExplorePage from './pages/app/Explore'
 
 function RedirectInvite() {
   const { code } = useParams<{ code: string }>()
@@ -49,4 +50,5 @@ export const router = createBrowserRouter([
   { path: '/invites/:code', element: <RedirectInvite /> },
   // Staff-only admin portal (access controlled inside AdminPage)
   { path: '/admin', element: <ProtectedRoute><AdminPage /></ProtectedRoute> },
+  { path: '/explore', element: <ProtectedRoute><ExplorePage /></ProtectedRoute> },
 ])
