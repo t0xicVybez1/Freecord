@@ -50,7 +50,7 @@ export function useGateway() {
       if (d.channelId) setVoiceState(d.userId, d)
       else clearVoiceState(d.userId)
     }))
-    off.push(gateway.on('USER_UPDATE', (d: User) => { updateUser(d as any); setUser(d) }))
+    off.push(gateway.on('USER_UPDATE', (d: User) => { updateUser(d as any); setUser(d); setPresence(d.id, { userId: d.id, status: d.status as any }) }))
     off.push(gateway.on('RELATIONSHIP_ADD', (d: Relationship) => addRelationship(d)))
     off.push(gateway.on('RELATIONSHIP_REMOVE', (d: { id: string; userId: string }) => removeRelationship(d.userId)))
 

@@ -1,6 +1,7 @@
 import { useAuthStore } from '@/stores/auth'
 import { useVoiceStore } from '@/stores/voice'
 import { useUIStore } from '@/stores/ui'
+import { useUsersStore } from '@/stores/users'
 import { Avatar } from '@/components/ui/Avatar'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { api } from '@/lib/api'
@@ -18,6 +19,7 @@ const STATUS_OPTIONS: { value: UserStatus; label: string; color: string }[] = [
 export function UserPanel() {
   const user = useAuthStore(s => s.user)
   const updateUser = useAuthStore(s => s.updateUser)
+  const setPresence = useUsersStore(s => s.setPresence)
   const { selfMute, selfDeaf, setSelfMute, setSelfDeaf } = useVoiceStore()
   const { openModal, openContextMenu } = useUIStore()
   if (!user) return null
@@ -31,6 +33,7 @@ export function UserPanel() {
         try {
           const updated = await api.patch<PrivateUser>('/api/v1/users/@me', { status: opt.value })
           updateUser({ status: updated.status })
+          if (user) setPresence(user.id, { userId: user.id, status: updated.status as any })
         } catch {}
       },
     })))
