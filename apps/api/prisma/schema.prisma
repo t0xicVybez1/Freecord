@@ -1,0 +1,474 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ONLINE
+  IDLE
+  DND
+  INVISIBLE
+  OFFLINE
+}
+
+enum RelationshipType {
+  FRIEND
+  BLOCKED
+  PENDING_INCOMING
+  PENDING_OUTGOING
+}
+
+enum ChannelType {
+  GUILD_TEXT
+  DM
+  GUILD_VOICE
+  GROUP_DM
+  GUILD_CATEGORY
+  GUILD_ANNOUNCEMENT
+  PUBLIC_THREAD
+  PRIVATE_THREAD
+  GUILD_STAGE_VOICE
+}
+
+enum MessageType {
+  DEFAULT
+  RECIPIENT_ADD
+  RECIPIENT_REMOVE
+  CALL
+  CHANNEL_NAME_CHANGE
+  CHANNEL_ICON_CHANGE
+  CHANNEL_PINNED_MESSAGE
+  GUILD_MEMBER_JOIN
+  REPLY
+  APPLICATION_COMMAND
+  THREAD_CREATED
+  THREAD_STARTER_MESSAGE
+}
+
+model User {
+  id               String     @id
+  username         String     @unique
+  discriminator    String     @default("0")
+  email            String     @unique
+  passwordHash     String
+  avatar           String?
+  banner           String?
+  bio              String     @default("")
+  accentColor      Int?
+  status           UserStatus @default(OFFLINE)
+  customStatus     String?
+  system           Boolean    @default(false)
+  bot              Boolean    @default(false)
+  verified         Boolean    @default(true)
+  twoFactorEnabled Boolean    @default(false)
+  twoFactorSecret  String?
+  backupCodes      String[]   @default([])
+  flags            Int        @default(0)
+  locale           String     @default("en-US")
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  sessions        Session[]
+  guilds          GuildMember[]
+  ownedGuilds     Guild[]                @relation("GuildOwner")
+  messages        Message[]
+  dmChannels      DirectMessageMember[]
+  relationships   Relationship[]         @relation("RelationshipUser")
+  relatedTo       Relationship[]         @relation("RelationshipTarget")
+  reactions       MessageReaction[]
+  readStates      ReadState[]
+  voiceState      VoiceState?
+  auditLogs       AuditLog[]
+  webhooks        Webhook[]
+  userSettings    UserSettings?
+  presences       Presence[]
+  ownedDmChannels Channel[]              @relation("DMChannelOwner")
+}
+
+model Session {
+  id        String   @id
+  userId    String
+  token     String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+  ipAddress String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+model UserSettings {
+  userId                String   @id
+  theme                 String   @default("dark")
+  locale                String   @default("en-US")
+  messageDisplayCompact Boolean  @default(false)
+  developerMode         Boolean  @default(false)
+  enableTTS             Boolean  @default(false)
+  explicitContentFilter Int      @default(0)
+  defaultNotifications  Int      @default(0)
+  guildPositions        String[] @default([])
+  friendSourceFlags     Int      @default(14)
+  restrictedGuilds      String[] @default([])
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Relationship {
+  id        String           @id
+  userId    String
+  targetId  String
+  type      RelationshipType
+  createdAt DateTime         @default(now())
+
+  user   User @relation("RelationshipUser", fields: [userId], references: [id], onDelete: Cascade)
+  target User @relation("RelationshipTarget", fields: [targetId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, targetId])
+  @@index([userId])
+  @@index([targetId])
+}
+
+model Guild {
+  id                          String   @id
+  name                        String
+  icon                        String?
+  banner                      String?
+  splash                      String?
+  description                 String?
+  ownerId                     String
+  systemChannelId             String?
+  rulesChannelId              String?
+  publicUpdatesChannelId      String?
+  afkChannelId                String?
+  afkTimeout                  Int      @default(300)
+  verificationLevel           Int      @default(0)
+  defaultMessageNotifications Int      @default(0)
+  explicitContentFilter       Int      @default(0)
+  mfaLevel                    Int      @default(0)
+  nsfwLevel                   Int      @default(0)
+  preferredLocale             String   @default("en-US")
+  features                    String[] @default([])
+  large                       Boolean  @default(false)
+  memberCount                 Int      @default(1)
+  maxMembers                  Int      @default(500000)
+  createdAt                   DateTime @default(now())
+  updatedAt                   DateTime @updatedAt
+
+  owner       User          @relation("GuildOwner", fields: [ownerId], references: [id])
+  members     GuildMember[]
+  channels    Channel[]
+  roles       Role[]
+  emojis      Emoji[]
+  bans        GuildBan[]
+  invites     GuildInvite[]
+  auditLogs   AuditLog[]
+  webhooks    Webhook[]
+  voiceStates VoiceState[]
+
+  @@index([ownerId])
+}
+
+model GuildMember {
+  id           String    @id
+  guildId      String
+  userId       String
+  nickname     String?
+  avatar       String?
+  roles        String[]  @default([])
+  joinedAt     DateTime  @default(now())
+  premiumSince DateTime?
+  deaf         Boolean   @default(false)
+  mute         Boolean   @default(false)
+  pending      Boolean   @default(false)
+  permissions  String?
+
+  guild      Guild       @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user       User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  voiceState VoiceState? @relation("MemberVoiceState")
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+  @@index([userId])
+}
+
+model Channel {
+  id                 String      @id
+  type               ChannelType
+  guildId            String?
+  name               String?
+  topic              String?
+  position           Int         @default(0)
+  parentId           String?
+  nsfw               Boolean     @default(false)
+  slowmode           Int         @default(0)
+  lastMessageId      String?
+  lastPinTimestamp   DateTime?
+  userLimit          Int?
+  bitrate            Int?
+  rtcRegion          String?
+  videoQualityMode   Int         @default(1)
+  permissionOverwrites Json      @default("[]")
+  ownerId            String?
+  icon               String?
+  threadMetadata     Json?
+  memberCount        Int?
+  messageCount       Int?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  guild      Guild?                        @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  parent     Channel?                      @relation("ChannelParent", fields: [parentId], references: [id])
+  children   Channel[]                     @relation("ChannelParent")
+  messages   Message[]
+  dmMembers  DirectMessageMember[]
+  pins       MessagePin[]
+  webhooks   Webhook[]
+  voiceStates VoiceState[]
+  readStates ReadState[]
+  dmOwner    User?                         @relation("DMChannelOwner", fields: [ownerId], references: [id])
+
+  @@index([guildId])
+  @@index([parentId])
+}
+
+model DirectMessageMember {
+  id        String @id
+  channelId String
+  userId    String
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, userId])
+  @@index([channelId])
+  @@index([userId])
+}
+
+model Message {
+  id                  String      @id
+  channelId           String
+  authorId            String?
+  webhookId           String?
+  applicationId       String?
+  content             String      @default("")
+  type                MessageType @default(DEFAULT)
+  pinned              Boolean     @default(false)
+  tts                 Boolean     @default(false)
+  mentionEveryone     Boolean     @default(false)
+  mentions            String[]    @default([])
+  mentionRoles        String[]    @default([])
+  mentionChannels     String[]    @default([])
+  attachments         Json        @default("[]")
+  embeds              Json        @default("[]")
+  flags               Int         @default(0)
+  referencedMessageId String?
+  editedAt            DateTime?
+  deletedAt           DateTime?
+  createdAt           DateTime    @default(now())
+
+  channel   Channel           @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  author    User?             @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  reactions MessageReaction[]
+  pins      MessagePin[]
+
+  @@index([channelId])
+  @@index([authorId])
+  @@index([channelId, createdAt(sort: Desc)])
+}
+
+model MessageReaction {
+  id        String   @id
+  messageId String
+  userId    String
+  emoji     String
+  emojiName String?
+  animated  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([messageId, userId, emoji])
+  @@index([messageId])
+}
+
+model MessagePin {
+  id        String   @id
+  channelId String
+  messageId String
+  pinnedBy  String
+  pinnedAt  DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@unique([channelId, messageId])
+  @@index([channelId])
+}
+
+model Role {
+  id           String   @id
+  guildId      String
+  name         String
+  color        Int      @default(0)
+  hoist        Boolean  @default(false)
+  icon         String?
+  unicodeEmoji String?
+  position     Int      @default(0)
+  permissions  String   @default("0")
+  managed      Boolean  @default(false)
+  mentionable  Boolean  @default(false)
+  tags         Json?
+  createdAt    DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+model Emoji {
+  id            String   @id
+  guildId       String
+  name          String
+  userId        String?
+  animated      Boolean  @default(false)
+  available     Boolean  @default(true)
+  managed       Boolean  @default(false)
+  requireColons Boolean  @default(true)
+  roles         String[] @default([])
+  createdAt     DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+model GuildBan {
+  id        String   @id
+  guildId   String
+  userId    String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@unique([guildId, userId])
+  @@index([guildId])
+}
+
+model GuildInvite {
+  code      String    @id
+  guildId   String
+  channelId String
+  inviterId String?
+  uses      Int       @default(0)
+  maxUses   Int       @default(0)
+  maxAge    Int       @default(86400)
+  temporary Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  expiresAt DateTime?
+
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+
+  @@index([guildId])
+}
+
+model Webhook {
+  id            String   @id
+  type          Int      @default(1)
+  guildId       String?
+  channelId     String
+  userId        String?
+  applicationId String?
+  name          String
+  avatar        String?
+  token         String?  @unique
+  createdAt     DateTime @default(now())
+
+  guild   Guild?   @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  channel Channel  @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  creator User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([guildId])
+  @@index([channelId])
+}
+
+model AuditLog {
+  id         String   @id
+  guildId    String
+  userId     String?
+  targetId   String?
+  actionType Int
+  changes    Json?
+  options    Json?
+  reason     String?
+  createdAt  DateTime @default(now())
+
+  guild Guild  @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  user  User?  @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([guildId])
+  @@index([userId])
+}
+
+model VoiceState {
+  id               String    @id
+  guildId          String?
+  channelId        String?
+  userId           String    @unique
+  memberId         String?   @unique
+  sessionId        String
+  deaf             Boolean   @default(false)
+  mute             Boolean   @default(false)
+  selfDeaf         Boolean   @default(false)
+  selfMute         Boolean   @default(false)
+  selfStream       Boolean   @default(false)
+  selfVideo        Boolean   @default(false)
+  suppress         Boolean   @default(false)
+  requestToSpeakAt DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  user    User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel?     @relation(fields: [channelId], references: [id], onDelete: SetNull)
+  guild   Guild?       @relation(fields: [guildId], references: [id], onDelete: SetNull)
+  member  GuildMember? @relation("MemberVoiceState", fields: [memberId], references: [id], onDelete: SetNull)
+
+  @@index([channelId])
+  @@index([guildId])
+}
+
+model ReadState {
+  id               String    @id
+  userId           String
+  channelId        String
+  lastMessageId    String?
+  mentionCount     Int       @default(0)
+  lastPinTimestamp DateTime?
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+}
+
+model Presence {
+  id           String     @id
+  userId       String
+  status       UserStatus @default(OFFLINE)
+  activities   Json       @default("[]")
+  clientStatus Json       @default("{}")
+  updatedAt    DateTime   @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+}
