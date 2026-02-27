@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { PrivateUser, UserSettings } from '@freecord/types'
 import api, { setAccessToken } from '@/lib/api'
 import { gateway } from '@/lib/gateway'
+import { useGuildsStore } from './guilds'
 
 interface AuthState {
   user: PrivateUser | null
@@ -35,6 +36,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         ])
         set({ user, settings, isAuthenticated: true })
         gateway.connect(data.token)
+        api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
+          if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
+        }).catch(() => {})
       } else { set({ isAuthenticated: false }) }
     } catch { set({ isAuthenticated: false }) }
     finally { set({ isLoading: false }) }
@@ -46,6 +50,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const settings = await api.get<UserSettings>('/api/v1/users/@me/settings').catch(() => null)
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
+    api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
+      if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
+    }).catch(() => {})
   },
 
   register: async (username, email, password) => {
@@ -54,6 +61,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const settings = await api.get<UserSettings>('/api/v1/users/@me/settings').catch(() => null)
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
+    api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
+      if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
+    }).catch(() => {})
   },
 
   logout: async () => {
