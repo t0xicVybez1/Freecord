@@ -21,6 +21,14 @@ export class GatewayClient {
   }
 
   connect(token: string) {
+    // Prevent duplicate connections (e.g. React StrictMode double-invoking effects)
+    if (
+      this.token === token &&
+      this.ws &&
+      (this.ws.readyState === WebSocket.CONNECTING || this.ws.readyState === WebSocket.OPEN)
+    ) {
+      return
+    }
     this.token = token
     this.intentionalClose = false
     this.reconnectAttempts = 0

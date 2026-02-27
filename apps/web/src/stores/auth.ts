@@ -3,8 +3,27 @@ import type { PrivateUser, UserSettings } from '@freecord/types'
 import api, { setAccessToken } from '@/lib/api'
 import { gateway } from '@/lib/gateway'
 import { useGuildsStore } from './guilds'
+import { useChannelsStore } from './channels'
+import type { Channel } from '@freecord/types'
 
 const API_URL = () => import.meta.env.VITE_API_URL || 'http://localhost:3000'
+
+/** Preload guilds + their channels from REST API so the sidebar works even if READY is slow. */
+async function preloadGuildsAndChannels() {
+  try {
+    const guilds = await api.get<any[]>('/api/v1/users/@me/guilds')
+    if (!guilds?.length) return
+    useGuildsStore.getState().setGuilds(guilds)
+    // Fetch channels for all guilds in parallel
+    await Promise.all(
+      guilds.map(g =>
+        api.get<Channel[]>(`/api/v1/guilds/${g.id}/channels`)
+          .then(channels => { if (channels?.length) useChannelsStore.getState().setGuildChannels(g.id, channels) })
+          .catch(() => {})
+      )
+    )
+  } catch {}
+}
 
 /** Register a handler so the gateway can silently refresh an expired access token. */
 function setupTokenRefresh(set: (s: Partial<{ isAuthenticated: boolean }>) => void) {
@@ -57,9 +76,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ user, settings, isAuthenticated: true })
         gateway.connect(data.token)
         setupTokenRefresh(set)
-        api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
-          if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
-        }).catch(() => {})
+        preloadGuildsAndChannels()
       } else { set({ isAuthenticated: false }) }
     } catch { set({ isAuthenticated: false }) }
     finally { set({ isLoading: false }) }
@@ -72,9 +89,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
     setupTokenRefresh(set)
-    api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
-      if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
-    }).catch(() => {})
+    preloadGuildsAndChannels()
   },
 
   register: async (username, email, password) => {
@@ -84,9 +99,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     set({ user: data.user, settings, isAuthenticated: true })
     gateway.connect(data.token)
     setupTokenRefresh(set)
-    api.get<any[]>('/api/v1/users/@me/guilds').then(guilds => {
-      if (guilds?.length) useGuildsStore.getState().setGuilds(guilds)
-    }).catch(() => {})
+    preloadGuildsAndChannels()
   },
 
   logout: async () => {
