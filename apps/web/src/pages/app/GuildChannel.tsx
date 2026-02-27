@@ -8,6 +8,7 @@ import { MessageInput } from '@/components/chat/MessageInput'
 import { MemberList } from '@/components/layout/MemberList'
 import { TypingIndicator } from '@/components/chat/TypingIndicator'
 import { SearchPanel } from '@/components/chat/SearchPanel'
+import { PinnedMessagesPanel } from '@/components/chat/PinnedMessagesPanel'
 import { VoiceControls } from '@/components/voice/VoiceControls'
 import { useUIStore } from '@/stores/ui'
 import { useVoiceStore } from '@/stores/voice'
@@ -23,6 +24,7 @@ export default function GuildChannelPage() {
   const { activeMemberListPanel, toggleMemberList } = useUIStore()
   const [replyTo, setReplyTo] = useState<Message | null>(null)
   const [showSearch, setShowSearch] = useState(false)
+  const [showPins, setShowPins] = useState(false)
   const [jumpToId, setJumpToId] = useState<string | undefined>()
   const currentVoiceId = useVoiceStore(s => s.channelId)
 
@@ -65,7 +67,14 @@ export default function GuildChannelPage() {
             <span className="text-sm text-text-muted truncate">{channel.topic}</span></>
           )}
           <div className="ml-auto flex items-center gap-1">
-            <Tooltip content="Threads"><button className="p-1.5 text-interactive-normal hover:text-white"><Hash size={20} /></button></Tooltip>
+            <Tooltip content="Pinned Messages">
+              <button
+                onClick={() => { setShowPins(v => !v); setShowSearch(false); }}
+                className={`p-1.5 transition-colors ${showPins ? 'text-white' : 'text-interactive-normal hover:text-white'}`}
+              >
+                <Pin size={20} />
+              </button>
+            </Tooltip>
             <Tooltip content={activeMemberListPanel ? 'Hide Members' : 'Show Members'}>
               <button onClick={toggleMemberList} className={`p-1.5 transition-colors ${activeMemberListPanel ? 'text-white' : 'text-interactive-normal hover:text-white'}`}>
                 <Users size={20} />
@@ -73,7 +82,7 @@ export default function GuildChannelPage() {
             </Tooltip>
             <Tooltip content="Search Messages">
               <button
-                onClick={() => setShowSearch(v => !v)}
+                onClick={() => { setShowSearch(v => !v); setShowPins(false); }}
                 className={`p-1.5 transition-colors ${showSearch ? 'text-white' : 'text-interactive-normal hover:text-white'}`}
               >
                 <Search size={20} />
@@ -101,6 +110,12 @@ export default function GuildChannelPage() {
                 channelName={channel.name}
                 onClose={() => setShowSearch(false)}
                 onJumpTo={handleJumpTo}
+              />
+            )}
+            {showPins && (
+              <PinnedMessagesPanel
+                channelId={channelId}
+                onClose={() => setShowPins(false)}
               />
             )}
           </div>

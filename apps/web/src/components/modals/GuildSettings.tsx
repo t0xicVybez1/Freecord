@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import {
   Settings, Shield, Users, Hash, Globe, Trash2, X, Copy, Check,
   UserX, Ban, Plus, Webhook, Smile, FileText, Crown, ChevronRight,
-  Lock, Volume2, Megaphone
+  Lock, Volume2, Megaphone, Mic, MicOff, Headphones, VolumeX
 } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
@@ -186,6 +186,10 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
   const [channelEdit, setChannelEdit] = useState<ChannelEditState>({ name: '', topic: '', nsfw: false, slowmode: 0, bitrate: 64000, userLimit: 0 });
   const [channelSaving, setChannelSaving] = useState(false);
+  const [channelTab, setChannelTab] = useState<'overview' | 'permissions'>('overview');
+  // Permission overwrites: map of roleId -> { allow: bigint, deny: bigint }
+  const [overwrites, setOverwrites] = useState<Record<string, { allow: bigint; deny: bigint }>>({});
+  const [overwritesSaving, setOverwritesSaving] = useState(false);
 
   // Close role picker on outside click
   useEffect(() => {
@@ -278,6 +282,20 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
       setMembers(prev => prev.filter(m => m.user.id !== userId));
       setBanTarget(null); setBanReason('');
     } catch (e: any) { setError(e.message || 'Failed to ban member'); }
+  };
+
+  const handleToggleMute = async (userId: string, currentMute: boolean) => {
+    try {
+      await api.patch(`/api/v1/guilds/${guildId}/members/${userId}`, { mute: !currentMute });
+      setMembers(prev => prev.map(m => m.user.id === userId ? { ...m, mute: !currentMute } : m));
+    } catch (e: any) { setError(e.message || 'Failed to update mute'); }
+  };
+
+  const handleToggleDeafen = async (userId: string, currentDeaf: boolean) => {
+    try {
+      await api.patch(`/api/v1/guilds/${guildId}/members/${userId}`, { deaf: !currentDeaf });
+      setMembers(prev => prev.map(m => m.user.id === userId ? { ...m, deaf: !currentDeaf } : m));
+    } catch (e: any) { setError(e.message || 'Failed to update deafen'); }
   };
 
   const handleAddRole = async (userId: string, roleId: string) => {
@@ -427,6 +445,39 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const selectChannel = (ch: Channel) => {
     setSelectedChannel(ch);
     setChannelEdit({ name: ch.name, topic: ch.topic || '', nsfw: ch.nsfw || false, slowmode: ch.slowmode || 0, bitrate: ch.bitrate || 64000, userLimit: ch.userLimit || 0 });
+    setChannelTab('overview');
+    // Load existing permission overwrites from channel data
+    const existing: Record<string, { allow: bigint; deny: bigint }> = {};
+    ((ch as any).permissionOverwrites || []).forEach((ow: any) => {
+      if (ow.type === 0) existing[ow.id] = { allow: BigInt(ow.allow || '0'), deny: BigInt(ow.deny || '0') };
+    });
+    setOverwrites(existing);
+  };
+
+  const handleSaveOverwrite = async (roleId: string) => {
+    if (!selectedChannel) return;
+    setOverwritesSaving(true);
+    const ow = overwrites[roleId] || { allow: 0n, deny: 0n };
+    try {
+      await api.put(`/api/v1/channels/${selectedChannel.id}/permissions/${roleId}`, {
+        type: 0,
+        allow: ow.allow.toString(),
+        deny: ow.deny.toString(),
+      });
+    } catch (e: any) { setError(e.message || 'Failed to save permission'); }
+    finally { setOverwritesSaving(false); }
+  };
+
+  const toggleOverwrite = (roleId: string, bit: bigint, current: 'allow' | 'deny' | 'inherit') => {
+    setOverwrites(prev => {
+      const ow = prev[roleId] || { allow: 0n, deny: 0n };
+      let { allow, deny } = ow;
+      // Cycle: inherit -> allow -> deny -> inherit
+      if (current === 'inherit') { allow |= bit; deny &= ~bit; }
+      else if (current === 'allow') { deny |= bit; allow &= ~bit; }
+      else { allow &= ~bit; deny &= ~bit; }
+      return { ...prev, [roleId]: { allow, deny } };
+    });
   };
 
   const handleSaveChannel = async () => {
@@ -776,63 +827,138 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
               <div className="flex-1 overflow-y-auto">
                 {selectedChannel ? (
                   <div className="space-y-4">
-                    <Input label="CHANNEL NAME" value={channelEdit.name} onChange={e => setChannelEdit(s => ({ ...s, name: e.target.value }))} />
-                    {(selectedChannel.type === ChannelType.GUILD_TEXT || selectedChannel.type === ChannelType.GUILD_ANNOUNCEMENT) && (
-                      <>
-                        <div>
-                          <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Channel Topic</label>
-                          <textarea
-                            className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none resize-none"
-                            rows={3}
-                            placeholder="Let everyone know how to use this channel."
-                            value={channelEdit.topic}
-                            onChange={e => setChannelEdit(s => ({ ...s, topic: e.target.value }))}
-                          />
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Slowmode</label>
-                          <select
-                            className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
-                            value={channelEdit.slowmode}
-                            onChange={e => setChannelEdit(s => ({ ...s, slowmode: Number(e.target.value) }))}
-                          >
-                            {[[0,'Off'],[5,'5s'],[10,'10s'],[15,'15s'],[30,'30s'],[60,'1m'],[120,'2m'],[300,'5m'],[600,'10m'],[900,'15m'],[1800,'30m'],[3600,'1h'],[7200,'2h'],[21600,'6h']].map(([v, l]) => (
-                              <option key={v} value={v}>{l}</option>
-                            ))}
-                          </select>
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                          <input type="checkbox" checked={channelEdit.nsfw} onChange={e => setChannelEdit(s => ({ ...s, nsfw: e.target.checked }))} className="rounded" />
-                          <span className="text-sm text-text-header">Age-restricted channel (NSFW)</span>
-                        </label>
-                      </>
-                    )}
-                    {(selectedChannel.type === ChannelType.GUILD_VOICE || selectedChannel.type === ChannelType.GUILD_STAGE_VOICE) && (
-                      <>
-                        <div>
-                          <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Bitrate</label>
-                          <input type="range" min={8000} max={384000} step={8000} value={channelEdit.bitrate}
-                            onChange={e => setChannelEdit(s => ({ ...s, bitrate: Number(e.target.value) }))}
-                            className="w-full" />
-                          <p className="text-text-muted text-xs mt-1">{Math.round(channelEdit.bitrate / 1000)}kbps</p>
-                        </div>
-                        <div>
-                          <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">User Limit</label>
-                          <input type="number" min={0} max={99} value={channelEdit.userLimit}
-                            onChange={e => setChannelEdit(s => ({ ...s, userLimit: Number(e.target.value) }))}
-                            className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
-                            placeholder="0 = unlimited" />
-                        </div>
-                      </>
-                    )}
-                    {error && <p className="text-danger text-sm">{error}</p>}
-                    {success && <p className="text-success text-sm">{success}</p>}
-                    <div className="flex gap-2">
-                      {isOwner && <Button onClick={handleSaveChannel} loading={channelSaving}>Save Changes</Button>}
-                      {isOwner && (
-                        <Button variant="danger" onClick={handleDeleteChannel} loading={channelSaving}><Trash2 size={14} className="mr-1" /> Delete Channel</Button>
-                      )}
+                    {/* Tab switcher */}
+                    <div className="flex gap-1 border-b border-black/20 pb-2">
+                      {(['overview', 'permissions'] as const).map(tab => (
+                        <button key={tab} onClick={() => setChannelTab(tab)}
+                          className={`px-3 py-1 rounded text-sm font-medium transition-colors capitalize ${channelTab === tab ? 'bg-brand/20 text-white' : 'text-text-muted hover:text-text-header'}`}>
+                          {tab}
+                        </button>
+                      ))}
                     </div>
+
+                    {channelTab === 'overview' && (
+                      <>
+                        <Input label="CHANNEL NAME" value={channelEdit.name} onChange={e => setChannelEdit(s => ({ ...s, name: e.target.value }))} />
+                        {(selectedChannel.type === ChannelType.GUILD_TEXT || selectedChannel.type === ChannelType.GUILD_ANNOUNCEMENT) && (
+                          <>
+                            <div>
+                              <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Channel Topic</label>
+                              <textarea
+                                className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none resize-none"
+                                rows={3}
+                                placeholder="Let everyone know how to use this channel."
+                                value={channelEdit.topic}
+                                onChange={e => setChannelEdit(s => ({ ...s, topic: e.target.value }))}
+                              />
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Slowmode</label>
+                              <select
+                                className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                                value={channelEdit.slowmode}
+                                onChange={e => setChannelEdit(s => ({ ...s, slowmode: Number(e.target.value) }))}
+                              >
+                                {[[0,'Off'],[5,'5s'],[10,'10s'],[15,'15s'],[30,'30s'],[60,'1m'],[120,'2m'],[300,'5m'],[600,'10m'],[900,'15m'],[1800,'30m'],[3600,'1h'],[7200,'2h'],[21600,'6h']].map(([v, l]) => (
+                                  <option key={v} value={v}>{l}</option>
+                                ))}
+                              </select>
+                            </div>
+                            <label className="flex items-center gap-2 cursor-pointer">
+                              <input type="checkbox" checked={channelEdit.nsfw} onChange={e => setChannelEdit(s => ({ ...s, nsfw: e.target.checked }))} className="rounded" />
+                              <span className="text-sm text-text-header">Age-restricted channel (NSFW)</span>
+                            </label>
+                          </>
+                        )}
+                        {(selectedChannel.type === ChannelType.GUILD_VOICE || selectedChannel.type === ChannelType.GUILD_STAGE_VOICE) && (
+                          <>
+                            <div>
+                              <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Bitrate</label>
+                              <input type="range" min={8000} max={384000} step={8000} value={channelEdit.bitrate}
+                                onChange={e => setChannelEdit(s => ({ ...s, bitrate: Number(e.target.value) }))}
+                                className="w-full" />
+                              <p className="text-text-muted text-xs mt-1">{Math.round(channelEdit.bitrate / 1000)}kbps</p>
+                            </div>
+                            <div>
+                              <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">User Limit</label>
+                              <input type="number" min={0} max={99} value={channelEdit.userLimit}
+                                onChange={e => setChannelEdit(s => ({ ...s, userLimit: Number(e.target.value) }))}
+                                className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                                placeholder="0 = unlimited" />
+                            </div>
+                          </>
+                        )}
+                        {error && <p className="text-danger text-sm">{error}</p>}
+                        {success && <p className="text-success text-sm">{success}</p>}
+                        <div className="flex gap-2">
+                          {isOwner && <Button onClick={handleSaveChannel} loading={channelSaving}>Save Changes</Button>}
+                          {isOwner && (
+                            <Button variant="danger" onClick={handleDeleteChannel} loading={channelSaving}><Trash2 size={14} className="mr-1" /> Delete Channel</Button>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {channelTab === 'permissions' && (
+                      <div className="space-y-3">
+                        <p className="text-text-muted text-xs">Set permissions per role. Click a permission to cycle: Inherit → Allow → Deny.</p>
+                        {(guild.roles || []).map(role => {
+                          const ow = overwrites[role.id] || { allow: 0n, deny: 0n };
+                          const CHANNEL_PERMS = [
+                            { label: 'View Channel', bit: 1n << 10n },
+                            { label: 'Send Messages', bit: 1n << 11n },
+                            { label: 'Read Message History', bit: 1n << 16n },
+                            { label: 'Manage Messages', bit: 1n << 13n },
+                            { label: 'Embed Links', bit: 1n << 14n },
+                            { label: 'Attach Files', bit: 1n << 15n },
+                            { label: 'Add Reactions', bit: 1n << 6n },
+                            { label: 'Mention Everyone', bit: 1n << 17n },
+                            { label: 'Connect (Voice)', bit: 1n << 20n },
+                            { label: 'Speak (Voice)', bit: 1n << 21n },
+                          ];
+                          return (
+                            <div key={role.id} className="bg-bg-tertiary rounded-lg p-3">
+                              <div className="flex items-center justify-between mb-2">
+                                <span className="text-sm font-semibold text-text-header flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: role.color ? `#${role.color.toString(16).padStart(6,'0')}` : '#99aab5' }} />
+                                  {role.name}
+                                </span>
+                                {isOwner && (
+                                  <button
+                                    onClick={() => handleSaveOverwrite(role.id)}
+                                    disabled={overwritesSaving}
+                                    className="text-xs text-brand hover:underline"
+                                  >
+                                    Save
+                                  </button>
+                                )}
+                              </div>
+                              <div className="grid grid-cols-2 gap-1">
+                                {CHANNEL_PERMS.map(perm => {
+                                  const isAllow = (ow.allow & perm.bit) !== 0n;
+                                  const isDeny = (ow.deny & perm.bit) !== 0n;
+                                  const state = isAllow ? 'allow' : isDeny ? 'deny' : 'inherit';
+                                  return (
+                                    <button
+                                      key={perm.label}
+                                      onClick={() => isOwner && toggleOverwrite(role.id, perm.bit, state)}
+                                      className={`flex items-center justify-between px-2 py-1 rounded text-xs transition-colors ${
+                                        state === 'allow' ? 'bg-green-500/20 text-green-400' :
+                                        state === 'deny' ? 'bg-danger/20 text-danger' :
+                                        'text-text-muted hover:bg-white/[0.04]'
+                                      } ${!isOwner ? 'cursor-default' : 'cursor-pointer'}`}
+                                    >
+                                      <span>{perm.label}</span>
+                                      <span className="font-bold">{state === 'allow' ? '✓' : state === 'deny' ? '✗' : '—'}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
@@ -924,7 +1050,21 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                         </div>
                       </div>
                       {isOwner && member.user.id !== user?.id && member.user.id !== guild.ownerId && (
-                        <div className="flex gap-1 flex-shrink-0">
+                        <div className="flex gap-1 flex-shrink-0 flex-wrap justify-end">
+                          <button
+                            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${(member as any).mute ? 'text-danger bg-danger/10 hover:bg-danger/20' : 'text-text-muted hover:text-white hover:bg-white/[0.06]'}`}
+                            onClick={() => handleToggleMute(member.user.id, !!(member as any).mute)}
+                            title={(member as any).mute ? 'Unmute' : 'Server Mute'}
+                          >
+                            {(member as any).mute ? <MicOff size={13} /> : <Mic size={13} />}
+                          </button>
+                          <button
+                            className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${(member as any).deaf ? 'text-danger bg-danger/10 hover:bg-danger/20' : 'text-text-muted hover:text-white hover:bg-white/[0.06]'}`}
+                            onClick={() => handleToggleDeafen(member.user.id, !!(member as any).deaf)}
+                            title={(member as any).deaf ? 'Undeafen' : 'Server Deafen'}
+                          >
+                            {(member as any).deaf ? <VolumeX size={13} /> : <Headphones size={13} />}
+                          </button>
                           <button
                             className="flex items-center gap-1 text-xs text-text-muted hover:text-danger hover:bg-danger/10 px-2 py-1 rounded transition-colors"
                             onClick={() => handleKick(member.user.id)}

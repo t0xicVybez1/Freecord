@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { useGuildsStore } from '@/stores/guilds'
@@ -12,10 +12,57 @@ import { Tooltip } from '@/components/ui/Tooltip'
 import { cn } from '@/lib/utils'
 import {
   Hash, Volume2, ChevronDown, ChevronRight, Plus, Settings,
-  UserPlus, Mic, MicOff, LogOut, Lock, Megaphone
+  UserPlus, Mic, MicOff, LogOut, Lock, Megaphone, MessageSquare, Bell, BellOff, BellRing
 } from 'lucide-react'
 import type { Channel } from '@freecord/types'
 import { ChannelType } from '@freecord/types'
+
+type NotifLevel = 'all' | 'mentions' | 'nothing'
+
+const NOTIF_STORAGE_KEY = 'freecord_channel_notifs'
+
+function getStoredNotifs(): Record<string, NotifLevel> {
+  try { return JSON.parse(localStorage.getItem(NOTIF_STORAGE_KEY) || '{}') } catch { return {} }
+}
+
+function setStoredNotif(channelId: string, level: NotifLevel) {
+  const all = getStoredNotifs()
+  if (level === 'all') delete all[channelId]
+  else all[channelId] = level
+  localStorage.setItem(NOTIF_STORAGE_KEY, JSON.stringify(all))
+}
+
+function NotifDropdown({ channelId, onClose }: { channelId: string; onClose: () => void }) {
+  const current: NotifLevel = getStoredNotifs()[channelId] || 'all'
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) onClose() }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [onClose])
+
+  return (
+    <div ref={ref} className="absolute right-0 top-full mt-1 bg-bg-floating border border-black/30 rounded-lg shadow-xl z-50 w-44 py-1 text-sm">
+      <p className="px-3 py-1 text-xs text-text-muted font-semibold uppercase tracking-wide">Notifications</p>
+      {([
+        { value: 'all', label: 'All Messages', icon: <BellRing size={13} /> },
+        { value: 'mentions', label: 'Only @Mentions', icon: <Bell size={13} /> },
+        { value: 'nothing', label: 'Nothing', icon: <BellOff size={13} /> },
+      ] as { value: NotifLevel; label: string; icon: React.ReactNode }[]).map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => { setStoredNotif(channelId, opt.value); onClose(); }}
+          className={`w-full flex items-center gap-2 px-3 py-1.5 hover:bg-white/[0.06] transition-colors ${current === opt.value ? 'text-white' : 'text-text-muted'}`}
+        >
+          {opt.icon}
+          {opt.label}
+          {current === opt.value && <span className="ml-auto text-brand text-xs">✓</span>}
+        </button>
+      ))}
+    </div>
+  )
+}
 
 function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }) {
   const navigate = useNavigate()
@@ -27,10 +74,13 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
   const voiceStates = useVoiceStore(s => s.voiceStates)
   const voiceMembers = Object.values(voiceStates).filter(vs => vs.channelId === channel.id)
   const guild = useGuildsStore(s => s.guilds[guildId])
+  const [showNotifMenu, setShowNotifMenu] = useState(false)
 
   const isVoice = channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE
-  const Icon = isVoice ? Volume2 : channel.type === ChannelType.GUILD_ANNOUNCEMENT ? Megaphone : channel.nsfw ? Lock : Hash
+  const isThread = channel.type === ChannelType.PUBLIC_THREAD || channel.type === ChannelType.PRIVATE_THREAD
+  const Icon = isVoice ? Volume2 : isThread ? MessageSquare : channel.type === ChannelType.GUILD_ANNOUNCEMENT ? Megaphone : channel.nsfw ? Lock : Hash
   const inVoice = voiceChannelId === channel.id
+  const notifLevel: NotifLevel = getStoredNotifs()[channel.id] || 'all'
 
   const handleClick = () => {
     if (isVoice) {
@@ -41,17 +91,20 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
     }
   }
 
+  const NotifIcon = notifLevel === 'nothing' ? BellOff : notifLevel === 'mentions' ? Bell : null
+
   return (
     <div>
       <div
         onClick={handleClick}
         className={cn(
-          'group flex items-center gap-1.5 px-2 py-1 rounded mx-2 cursor-pointer transition-colors',
+          'group relative flex items-center gap-1.5 px-2 py-1 rounded mx-2 cursor-pointer transition-colors',
           isActive || inVoice ? 'bg-white/[0.12] text-white' : 'text-interactive-normal hover:text-interactive-hover hover:bg-white/[0.06]'
         )}
       >
         <Icon size={18} className="flex-shrink-0 text-interactive-muted" />
         <span className="text-sm font-medium truncate flex-1">{channel.name}</span>
+        {NotifIcon && !isActive && <NotifIcon size={12} className="text-text-muted flex-shrink-0" />}
         <div className="hidden group-hover:flex items-center gap-0.5">
           {!isVoice && (
             <Tooltip content="Create Invite">
@@ -60,6 +113,12 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
               </button>
             </Tooltip>
           )}
+          <Tooltip content="Notification Settings">
+            <button className="p-0.5 hover:text-white relative" onClick={e => { e.stopPropagation(); setShowNotifMenu(v => !v) }}>
+              <Bell size={14} />
+              {showNotifMenu && <NotifDropdown channelId={channel.id} onClose={() => setShowNotifMenu(false)} />}
+            </button>
+          </Tooltip>
           <Tooltip content="Edit Channel">
             <button className="p-0.5 hover:text-white" onClick={e => { e.stopPropagation(); openModal({ type: 'GUILD_SETTINGS', data: { guildId, tab: 'channels', channelId: channel.id } }) }}>
               <Settings size={14} />
@@ -118,9 +177,12 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
 
   if (!guild) return null
 
+  const isThread = (c: Channel) => c.type === ChannelType.PUBLIC_THREAD || c.type === ChannelType.PRIVATE_THREAD
   const categories = channels.filter(c => c.type === ChannelType.GUILD_CATEGORY)
-  const uncategorized = channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY && !c.parentId)
-  const getChildren = (categoryId: string) => channels.filter(c => c.parentId === categoryId)
+  const threads = channels.filter(isThread)
+  const uncategorized = channels.filter(c => c.type !== ChannelType.GUILD_CATEGORY && !c.parentId && !isThread(c))
+  const getChildren = (categoryId: string) => channels.filter(c => c.parentId === categoryId && !isThread(c))
+  const getThreads = (channelId: string) => threads.filter(t => t.parentId === channelId)
 
   return (
     <div className="w-60 bg-bg-secondary flex flex-col flex-shrink-0">
@@ -158,13 +220,31 @@ export function ChannelSidebar({ guildId }: { guildId: string }) {
           </div>
         ) : (
           <>
-            {/* Uncategorized channels */}
-            {uncategorized.map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
+            {/* Uncategorized channels + their threads */}
+            {uncategorized.map(ch => (
+              <div key={ch.id}>
+                <ChannelItem channel={ch} guildId={guildId} />
+                {getThreads(ch.id).map(t => (
+                  <div key={t.id} className="ml-4 border-l border-white/10 pl-1">
+                    <ChannelItem channel={t} guildId={guildId} />
+                  </div>
+                ))}
+              </div>
+            ))}
 
-            {/* Categories with their channels */}
+            {/* Categories with their channels + threads */}
             {categories.map(cat => (
               <CategoryItem key={cat.id} channel={cat} guildId={guildId}>
-                {getChildren(cat.id).map(ch => <ChannelItem key={ch.id} channel={ch} guildId={guildId} />)}
+                {getChildren(cat.id).map(ch => (
+                  <div key={ch.id}>
+                    <ChannelItem channel={ch} guildId={guildId} />
+                    {getThreads(ch.id).map(t => (
+                      <div key={t.id} className="ml-4 border-l border-white/10 pl-1">
+                        <ChannelItem channel={t} guildId={guildId} />
+                      </div>
+                    ))}
+                  </div>
+                ))}
               </CategoryItem>
             ))}
           </>

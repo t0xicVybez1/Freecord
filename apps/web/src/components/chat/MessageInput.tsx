@@ -1,12 +1,23 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { Plus, Gift, Sticker, Smile, Mic, MicOff, Image } from 'lucide-react';
+import { Plus, Gift, Sticker, Smile } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { Avatar } from '../ui/Avatar';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth';
 import { useMessagesStore } from '../../stores/messages';
+import { useGuildsStore } from '../../stores/guilds';
+import { useChannelsStore } from '../../stores/channels';
 import { gateway } from '../../lib/gateway';
 import type { Message } from '@freecord/types';
+
+// Detect @mention or #channel query before cursor
+function getMentionQuery(text: string, cursor: number): { type: '@' | '#'; query: string; start: number } | null {
+  const before = text.slice(0, cursor);
+  const match = before.match(/(?:^|\s)(@|#)(\w*)$/);
+  if (!match) return null;
+  const start = before.lastIndexOf(match[1]);
+  return { type: match[1] as '@' | '#', query: match[2].toLowerCase(), start };
+}
 
 interface MessageInputProps {
   channelId: string;
@@ -29,10 +40,47 @@ export function MessageInput({
   const { addMessage } = useMessagesStore();
   const [content, setContent] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [mentionState, setMentionState] = useState<{
+    type: '@' | '#'; query: string; start: number; selectedIdx: number;
+  } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+
+  // Guild context for autocomplete
+  const channel = useChannelsStore(s => s.getChannel(channelId));
+  const guild = useGuildsStore(s => channel?.guildId ? s.guilds[channel.guildId] : undefined);
+  const guildChannels = useChannelsStore(s => channel?.guildId ? s.getGuildChannels(channel.guildId) : []);
+
+  // Build mention candidates
+  const mentionCandidates = (() => {
+    if (!mentionState) return [] as any[];
+    const q = mentionState.query;
+    if (mentionState.type === '@') {
+      const members = (guild?.members || []).filter(m =>
+        (m.nickname || m.user.username).toLowerCase().includes(q)
+      ).slice(0, 8).map(m => ({
+        id: m.user.id, label: m.nickname || m.user.username,
+        sublabel: m.nickname ? m.user.username : undefined,
+        avatar: m.user.avatar, isRole: false, insert: `<@${m.user.id}>`,
+      }));
+      const roles = (guild?.roles || []).filter(r =>
+        r.name !== '@everyone' && r.name.toLowerCase().includes(q)
+      ).slice(0, 4).map(r => ({
+        id: r.id, label: `@${r.name}`, sublabel: 'Role',
+        avatar: null, isRole: true, color: r.color, insert: `<@&${r.id}>`,
+      }));
+      return [...members, ...roles];
+    } else {
+      return guildChannels.filter(c => c.name && c.name.toLowerCase().includes(q)).slice(0, 8).map(c => ({
+        id: c.id, label: `#${c.name}`, sublabel: undefined,
+        avatar: null, isRole: false, isChannel: true, insert: `<#${c.id}>`,
+      }));
+    }
+  })();
+
+  const colorToHex = (c: number) => c ? `#${c.toString(16).padStart(6, '0')}` : '#99aab5';
 
   // Auto-resize textarea
   useEffect(() => {
@@ -53,17 +101,64 @@ export function MessageInput({
     }, 9000);
   }, [channelId]);
 
+  const insertMention = useCallback((candidate: (typeof mentionCandidates)[0]) => {
+    if (!mentionState) return;
+    const before = content.slice(0, mentionState.start);
+    const after = content.slice(textareaRef.current?.selectionEnd ?? content.length);
+    const newContent = before + candidate.insert + ' ' + after;
+    setContent(newContent);
+    setMentionState(null);
+    setTimeout(() => {
+      const el = textareaRef.current;
+      if (!el) return;
+      const pos = (before + candidate.insert + ' ').length;
+      el.focus(); el.setSelectionRange(pos, pos);
+    }, 0);
+  }, [content, mentionState]);
+
   const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (mentionState && mentionCandidates.length > 0) {
+      if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setMentionState(s => s ? { ...s, selectedIdx: (s.selectedIdx - 1 + mentionCandidates.length) % mentionCandidates.length } : null);
+        return;
+      }
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setMentionState(s => s ? { ...s, selectedIdx: (s.selectedIdx + 1) % mentionCandidates.length } : null);
+        return;
+      }
+      if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        insertMention(mentionCandidates[mentionState.selectedIdx]);
+        return;
+      }
+      if (e.key === 'Escape') { setMentionState(null); return; }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
-  }, [content, channelId, replyTo]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [content, channelId, replyTo, mentionState, mentionCandidates, insertMention]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setContent(val);
+    if (val) sendTyping();
+    const cursor = e.target.selectionStart ?? val.length;
+    const result = getMentionQuery(val, cursor);
+    if (result) {
+      setMentionState(s => ({ ...result, selectedIdx: s?.start === result.start ? s.selectedIdx : 0 }));
+    } else {
+      setMentionState(null);
+    }
+  }, [sendTyping]);
 
   const handleSend = useCallback(async () => {
     const trimmed = content.trim();
     if (!trimmed || disabled) return;
     setContent('');
+    setMentionState(null);
     isTypingRef.current = false;
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
 
@@ -111,7 +206,39 @@ export function MessageInput({
   const remaining = MAX_LENGTH - content.length;
 
   return (
-    <div className="px-4 pb-6 pt-2 flex-shrink-0">
+    <div className="px-4 pb-6 pt-2 flex-shrink-0 relative">
+      {/* @Mention / #Channel autocomplete */}
+      {mentionState && mentionCandidates.length > 0 && (
+        <div className="absolute bottom-full left-0 right-0 mb-2 bg-bg-floating border border-black/30 rounded-lg shadow-xl overflow-hidden z-30 max-h-64 overflow-y-auto">
+          <div className="px-3 py-1.5 text-xs text-text-muted font-semibold uppercase tracking-wide border-b border-black/20">
+            {mentionState.type === '@' ? 'Members & Roles' : 'Channels'}
+            {mentionState.query && ` — ${mentionState.query}`}
+          </div>
+          {mentionCandidates.map((c, i) => (
+            <button
+              key={c.id}
+              className={`w-full flex items-center gap-2.5 px-3 py-2 text-left transition-colors ${i === mentionState.selectedIdx ? 'bg-brand/20' : 'hover:bg-white/[0.06]'}`}
+              onMouseDown={e => { e.preventDefault(); insertMention(c); }}
+              onMouseEnter={() => setMentionState(s => s ? { ...s, selectedIdx: i } : null)}
+            >
+              {(c as any).isRole ? (
+                <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
+                  style={{ backgroundColor: colorToHex((c as any).color) + '33', color: colorToHex((c as any).color) }}>@</span>
+              ) : (c as any).isChannel ? (
+                <span className="w-6 h-6 flex items-center justify-center text-interactive-muted text-lg flex-shrink-0">#</span>
+              ) : (
+                <Avatar userId={c.id} username={c.label} avatarHash={c.avatar} size={24} />
+              )}
+              <div className="flex-1 min-w-0">
+                <span className="text-text-header text-sm font-medium truncate block">{c.label}</span>
+                {c.sublabel && <span className="text-text-muted text-xs truncate block">{c.sublabel}</span>}
+              </div>
+              {i === mentionState.selectedIdx && <span className="text-text-muted text-xs flex-shrink-0">↵</span>}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Reply banner */}
       {replyTo && (
         <div className="flex items-center justify-between px-3 py-1.5 mb-2 bg-bg-secondary rounded-t text-sm text-text-muted border-b border-[#1e1f22]">
@@ -156,10 +283,7 @@ export function MessageInput({
         <textarea
           ref={textareaRef}
           value={content}
-          onChange={e => {
-            setContent(e.target.value);
-            if (e.target.value) sendTyping();
-          }}
+          onChange={handleChange}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
           disabled={disabled || uploading}
