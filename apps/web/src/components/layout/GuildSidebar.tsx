@@ -15,7 +15,7 @@ function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; ico
 
   const handleClick = () => {
     const first = channels.find(c => c.type === ChannelType.GUILD_TEXT)
-    if (first) navigate(`/channels/${guild.id}/${first.id}`)
+    navigate(first ? `/channels/${guild.id}/${first.id}` : `/channels/${guild.id}`)
   }
 
   return (

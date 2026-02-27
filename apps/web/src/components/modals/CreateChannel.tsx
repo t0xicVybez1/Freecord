@@ -27,7 +27,7 @@ export function CreateChannelModal({ guildId, categoryId, onClose }: CreateChann
     setLoading(true);
     setError('');
     try {
-      const channel = await api.post<Channel>(`/guilds/${guildId}/channels`, {
+      const channel = await api.post<Channel>(`/api/v1/guilds/${guildId}/channels`, {
         name: name.trim().toLowerCase().replace(/\s+/g, '-'),
         type,
         parentId: categoryId,
