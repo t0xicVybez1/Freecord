@@ -13,6 +13,7 @@ interface ChannelsState {
   setDMChannels: (channels: Channel[]) => void
   addChannel: (channel: Channel) => void
   addDMChannel: (channel: Channel) => void
+  removeDMChannel: (id: string) => void
   updateChannel: (id: string, data: Partial<Channel>) => void
   removeChannel: (id: string) => void
   reset: () => void
@@ -65,6 +66,12 @@ export const useChannelsStore = create<ChannelsState>((set, get) => ({
     channels: { ...s.channels, [channel.id]: channel },
     dmChannels: s.dmChannels.includes(channel.id) ? s.dmChannels : [channel.id, ...s.dmChannels],
   })),
+
+  removeDMChannel: (id) => set(s => {
+    const channels = { ...s.channels }
+    delete channels[id]
+    return { channels, dmChannels: s.dmChannels.filter(cid => cid !== id) }
+  }),
 
   updateChannel: (id, data) => set(s => ({
     channels: s.channels[id] ? { ...s.channels, [id]: { ...s.channels[id], ...data } } : s.channels,

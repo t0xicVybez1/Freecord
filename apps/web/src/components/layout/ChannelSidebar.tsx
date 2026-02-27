@@ -6,6 +6,8 @@ import { useChannelsStore } from '@/stores/channels'
 import { useVoiceStore } from '@/stores/voice'
 import { useUIStore } from '@/stores/ui'
 import { useAuthStore } from '@/stores/auth'
+import { useMessagesStore } from '@/stores/messages'
+import { useReadStatesStore } from '@/stores/readStates'
 import { UserPanel } from './UserPanel'
 import { Avatar } from '@/components/ui/Avatar'
 import { Tooltip } from '@/components/ui/Tooltip'
@@ -76,6 +78,13 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
   const guild = useGuildsStore(s => s.guilds[guildId])
   const [showNotifMenu, setShowNotifMenu] = useState(false)
 
+  // Unread state
+  const channelMessages = useMessagesStore(s => s.channels[channel.id])
+  const latestId = channelMessages?.orderedIds[channelMessages.orderedIds.length - 1]
+  const isUnread = useReadStatesStore(s => s.isUnread(channel.id, latestId))
+  const mentionCount = useReadStatesStore(s => s.getMentionCount(channel.id))
+  const markRead = useReadStatesStore(s => s.markRead)
+
   const isVoice = channel.type === ChannelType.GUILD_VOICE || channel.type === ChannelType.GUILD_STAGE_VOICE
   const isThread = channel.type === ChannelType.PUBLIC_THREAD || channel.type === ChannelType.PRIVATE_THREAD
   const Icon = isVoice ? Volume2 : isThread ? MessageSquare : channel.type === ChannelType.GUILD_ANNOUNCEMENT ? Megaphone : channel.nsfw ? Lock : Hash
@@ -88,10 +97,12 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
       else if (user) joinChannel(guildId, channel.id, user.id)
     } else {
       navigate(`/channels/${guildId}/${channel.id}`)
+      if (latestId) markRead(channel.id, latestId)
     }
   }
 
   const NotifIcon = notifLevel === 'nothing' ? BellOff : notifLevel === 'mentions' ? Bell : null
+  const showUnreadIndicator = !isActive && isUnread && notifLevel !== 'nothing'
 
   return (
     <div>
@@ -99,12 +110,25 @@ function ChannelItem({ channel, guildId }: { channel: Channel; guildId: string }
         onClick={handleClick}
         className={cn(
           'group relative flex items-center gap-1.5 px-2 py-1 rounded mx-2 cursor-pointer transition-colors',
-          isActive || inVoice ? 'bg-white/[0.12] text-white' : 'text-interactive-normal hover:text-interactive-hover hover:bg-white/[0.06]'
+          isActive || inVoice
+            ? 'bg-white/[0.12] text-white'
+            : showUnreadIndicator
+              ? 'text-white font-semibold hover:bg-white/[0.06]'
+              : 'text-interactive-normal hover:text-interactive-hover hover:bg-white/[0.06]'
         )}
       >
+        {/* Unread pill */}
+        {showUnreadIndicator && !isActive && (
+          <div className="absolute -left-2 w-1 h-2 bg-white rounded-r-full" />
+        )}
         <Icon size={18} className="flex-shrink-0 text-interactive-muted" />
-        <span className="text-sm font-medium truncate flex-1">{channel.name}</span>
-        {NotifIcon && !isActive && <NotifIcon size={12} className="text-text-muted flex-shrink-0" />}
+        <span className="text-sm truncate flex-1">{channel.name}</span>
+        {mentionCount > 0 && !isActive && (
+          <span className="bg-danger text-white text-[10px] font-bold rounded-full min-w-[16px] h-4 flex items-center justify-center px-1 leading-none flex-shrink-0">
+            {mentionCount > 9 ? '9+' : mentionCount}
+          </span>
+        )}
+        {NotifIcon && !isActive && !mentionCount && <NotifIcon size={12} className="text-text-muted flex-shrink-0" />}
         <div className="hidden group-hover:flex items-center gap-0.5">
           {!isVoice && (
             <Tooltip content="Create Invite">

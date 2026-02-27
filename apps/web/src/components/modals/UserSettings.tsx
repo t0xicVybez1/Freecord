@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import { User, Shield, Bell, Palette, Keyboard, LogOut, X, Mic, Volume2, Video, Camera, ChevronDown } from 'lucide-react';
+import { User, Shield, Bell, Palette, Keyboard, LogOut, X, Mic, Volume2, Video, Camera, ChevronDown, Upload } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
 import { useAuthStore } from '../../stores/auth';
+import { useUIStore } from '../../stores/ui';
+import type { AppTheme } from '../../stores/ui';
 import { api } from '../../lib/api';
 import type { User as UserType } from '@freecord/types';
 
@@ -54,6 +56,7 @@ function Toggle({ value, onChange }: { value: boolean; onChange: (v: boolean) =>
 
 export function UserSettingsModal({ onClose }: UserSettingsProps) {
   const { user, logout } = useAuthStore();
+  const { theme, setTheme } = useUIStore();
   const [section, setSection] = useState<Section>('account');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -70,7 +73,10 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
   const [bannerColor, setBannerColor] = useState((user as any)?.bannerColor || '#5865f2');
   const [profileSaving, setProfileSaving] = useState(false);
   const avatarInputRef = useRef<HTMLInputElement>(null);
+  const bannerInputRef = useRef<HTMLInputElement>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
+  const [bannerUploading, setBannerUploading] = useState(false);
+  const [bannerImageUrl, setBannerImageUrl] = useState((user as any)?.bannerUrl || '');
 
   // Privacy state
   const [friendRequestsFrom, setFriendRequestsFrom] = useState<'everyone' | 'mutual_guilds' | 'none'>('everyone');
@@ -146,6 +152,22 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
       setError(e.message || 'Failed to save profile');
     } finally {
       setProfileSaving(false);
+    }
+  };
+
+  const handleBannerUpload = async (file: File) => {
+    setBannerUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('banner', file);
+      const res = await api.upload<any>('/api/v1/users/@me/banner', formData);
+      setBannerImageUrl(res.bannerUrl || '');
+      setSuccess('Banner updated!');
+      setTimeout(() => setSuccess(''), 3000);
+    } catch (e: any) {
+      setError(e.message || 'Failed to upload banner');
+    } finally {
+      setBannerUploading(false);
     }
   };
 
@@ -271,7 +293,16 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
             <div className="space-y-6">
               {/* Preview card */}
               <div className="bg-bg-tertiary rounded-lg overflow-hidden">
-                <div className="h-20 relative" style={{ backgroundColor: bannerColor }}>
+                <div
+                  className="h-20 relative group cursor-pointer"
+                  style={{ backgroundColor: bannerImageUrl ? undefined : bannerColor, backgroundImage: bannerImageUrl ? `url(${bannerImageUrl})` : undefined, backgroundSize: 'cover', backgroundPosition: 'center' }}
+                  onClick={() => bannerInputRef.current?.click()}
+                >
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <span className="text-white text-xs font-bold flex items-center gap-1">
+                      <Upload size={12} /> {bannerUploading ? 'Uploading...' : 'Change Banner'}
+                    </span>
+                  </div>
                   <div className="absolute -bottom-8 left-4">
                     <div className="rounded-full border-4 border-bg-tertiary overflow-hidden">
                       <Avatar userId={user.id} username={user.username} avatarHash={user.avatar} size={64} />
@@ -284,14 +315,29 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
                   {bio && <p className="text-text-muted text-sm mt-2 whitespace-pre-wrap">{bio}</p>}
                 </div>
               </div>
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/png,image/jpeg,image/gif,image/webp"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleBannerUpload(f); }}
+              />
 
               <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Banner Color</label>
+                  <label className="block text-xs font-semibold text-text-muted uppercase tracking-wide mb-2">Banner Color <span className="text-text-muted font-normal normal-case">(used when no image)</span></label>
                   <div className="flex items-center gap-3">
                     <input type="color" value={bannerColor} onChange={e => setBannerColor(e.target.value)}
                       className="w-10 h-10 rounded cursor-pointer border-0 bg-transparent" />
                     <span className="text-text-muted text-sm font-mono">{bannerColor}</span>
+                    {bannerImageUrl && (
+                      <button
+                        onClick={() => { setBannerImageUrl(''); api.delete('/api/v1/users/@me/banner').catch(() => {}); }}
+                        className="text-xs text-danger hover:underline ml-2"
+                      >
+                        Remove banner image
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -403,11 +449,25 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
           {section === 'appearance' && (
             <div className="space-y-6">
               <div className="bg-bg-tertiary rounded-lg p-4">
-                <h3 className="text-text-header font-semibold mb-3">Theme</h3>
+                <h3 className="text-text-header font-semibold mb-1">Theme</h3>
+                <p className="text-text-muted text-sm mb-3">Choose how FreeCord looks to you</p>
                 <div className="flex gap-3">
-                  {(['Dark', 'Light', 'Amoled'] as const).map(theme => (
-                    <button key={theme} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${theme === 'Dark' ? 'bg-brand text-white' : 'bg-bg-secondary text-text-muted hover:text-text-header'}`}>
-                      {theme}
+                  {([
+                    { id: 'dark', label: 'Dark', desc: 'Default dark theme' },
+                    { id: 'light', label: 'Light', desc: 'Light theme' },
+                    { id: 'amoled', label: 'Amoled', desc: 'True black for OLED' },
+                  ] as { id: AppTheme; label: string; desc: string }[]).map(t => (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id)}
+                      className={`flex-1 px-4 py-3 rounded-lg text-sm font-medium transition-all border-2 text-left ${
+                        theme === t.id
+                          ? 'border-brand bg-brand/10 text-white'
+                          : 'border-transparent bg-bg-secondary text-text-muted hover:text-text-header hover:border-white/10'
+                      }`}
+                    >
+                      <div className="font-semibold">{t.label}</div>
+                      <div className="text-xs mt-0.5 opacity-70">{t.desc}</div>
                     </button>
                   ))}
                 </div>
@@ -417,9 +477,20 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
                 <h3 className="text-text-header font-semibold mb-1">Message Display</h3>
                 <p className="text-text-muted text-sm mb-3">Choose how messages look</p>
                 <div className="flex gap-3">
-                  {(['Cozy', 'Compact'] as const).map(mode => (
-                    <button key={mode} className={`px-4 py-2 rounded text-sm font-medium transition-colors ${mode === 'Cozy' ? 'bg-brand text-white' : 'bg-bg-secondary text-text-muted hover:text-text-header'}`}>
-                      {mode}
+                  {([
+                    { id: 'cozy', label: 'Cozy', desc: 'Avatars shown with messages' },
+                    { id: 'compact', label: 'Compact', desc: 'More messages on screen' },
+                  ] as const).map(mode => (
+                    <button
+                      key={mode.id}
+                      className={`flex-1 px-4 py-3 rounded-lg text-sm border-2 text-left transition-all ${
+                        mode.id === 'cozy'
+                          ? 'border-brand bg-brand/10 text-white'
+                          : 'border-transparent bg-bg-secondary text-text-muted hover:text-text-header hover:border-white/10'
+                      }`}
+                    >
+                      <div className="font-semibold">{mode.label}</div>
+                      <div className="text-xs mt-0.5 opacity-70">{mode.desc}</div>
                     </button>
                   ))}
                 </div>

@@ -2,6 +2,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Plus, Gift, Sticker, Smile } from 'lucide-react';
 import { Tooltip } from '../ui/Tooltip';
 import { Avatar } from '../ui/Avatar';
+import { EmojiPicker } from '../ui/EmojiPicker';
 import { api } from '../../lib/api';
 import { useAuthStore } from '../../stores/auth';
 import { useMessagesStore } from '../../stores/messages';
@@ -40,6 +41,7 @@ export function MessageInput({
   const { addMessage } = useMessagesStore();
   const [content, setContent] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [mentionState, setMentionState] = useState<{
     type: '@' | '#'; query: string; start: number; selectedIdx: number;
   } | null>(null);
@@ -320,11 +322,28 @@ export function MessageInput({
               <Sticker size={18} />
             </button>
           </Tooltip>
-          <Tooltip content="Open Emoji Picker" side="top">
-            <button className="w-6 h-6 flex items-center justify-center text-text-muted hover:text-text-header transition-colors">
-              <Smile size={18} />
-            </button>
-          </Tooltip>
+          <div className="relative">
+            <Tooltip content="Open Emoji Picker" side="top">
+              <button
+                onClick={() => setShowEmojiPicker(v => !v)}
+                className={`w-6 h-6 flex items-center justify-center transition-colors ${showEmojiPicker ? 'text-brand' : 'text-text-muted hover:text-text-header'}`}
+              >
+                <Smile size={18} />
+              </button>
+            </Tooltip>
+            {showEmojiPicker && (
+              <div className="absolute bottom-full right-0 mb-2 z-50">
+                <EmojiPicker
+                  guildId={guild?.id}
+                  onSelect={(emoji) => {
+                    setContent(prev => prev + emoji);
+                    textareaRef.current?.focus();
+                  }}
+                  onClose={() => setShowEmojiPicker(false)}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

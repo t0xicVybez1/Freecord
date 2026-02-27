@@ -3,6 +3,8 @@ import { useShallow } from 'zustand/react/shallow'
 import { useGuildsStore } from '@/stores/guilds'
 import { useChannelsStore } from '@/stores/channels'
 import { useUIStore } from '@/stores/ui'
+import { useMessagesStore } from '@/stores/messages'
+import { useReadStatesStore } from '@/stores/readStates'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { CDNUtils } from '@/lib/cdn'
 import { cn, stringToColor, getInitials } from '@/lib/utils'
@@ -12,6 +14,18 @@ import { ChannelType } from '@freecord/types'
 function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; icon: string | null }; isActive: boolean }) {
   const navigate = useNavigate()
   const channels = useChannelsStore(useShallow(s => s.getGuildChannels(guild.id)))
+  const messages = useMessagesStore(s => s.channels)
+  const isUnread = useReadStatesStore(s => s.isUnread)
+  const getMentionCount = useReadStatesStore(s => s.getMentionCount)
+
+  // Check if any channel in this guild has unread messages
+  const guildChannels = channels.filter(c => c.type === ChannelType.GUILD_TEXT || c.type === ChannelType.GUILD_ANNOUNCEMENT)
+  const hasUnread = guildChannels.some(c => {
+    const ch = messages[c.id]
+    const latestId = ch?.orderedIds[ch.orderedIds.length - 1]
+    return isUnread(c.id, latestId)
+  })
+  const totalMentions = guildChannels.reduce((sum, c) => sum + getMentionCount(c.id), 0)
 
   const handleClick = () => {
     const first = channels.find(c => c.type === ChannelType.GUILD_TEXT)
@@ -24,7 +38,7 @@ function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; ico
         {/* Active/hover indicator */}
         <div className={cn(
           'absolute -left-3 w-1 rounded-r-full bg-white transition-all',
-          isActive ? 'h-10' : 'h-0 group-hover:h-5'
+          isActive ? 'h-10' : hasUnread ? 'h-2 group-hover:h-5' : 'h-0 group-hover:h-5'
         )} />
         <div className={cn(
           'w-12 h-12 rounded-full overflow-hidden cursor-pointer transition-all flex items-center justify-center text-white font-bold text-lg select-none',
@@ -38,6 +52,12 @@ function GuildIcon({ guild, isActive }: { guild: { id: string; name: string; ico
             : getInitials(guild.name)
           }
         </div>
+        {/* Unread / mention badge */}
+        {isActive ? null : totalMentions > 0 ? (
+          <div className="unread-mention">{totalMentions > 99 ? '99+' : totalMentions}</div>
+        ) : hasUnread ? (
+          <div className="unread-dot" />
+        ) : null}
       </div>
     </Tooltip>
   )

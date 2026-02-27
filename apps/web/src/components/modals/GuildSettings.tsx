@@ -133,6 +133,10 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
 
   const [section, setSection] = useState<Section>('overview');
   const [name, setName] = useState(guild?.name || '');
+  const [description, setDescription] = useState((guild as any)?.description || '');
+  const [afkChannelId, setAfkChannelId] = useState((guild as any)?.afkChannelId || '');
+  const [afkTimeout, setAfkTimeout] = useState((guild as any)?.afkTimeout || 300);
+  const [verificationLevel, setVerificationLevel] = useState((guild as any)?.verificationLevel || 0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -147,6 +151,8 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   const [rolePickerMemberId, setRolePickerMemberId] = useState<string | null>(null);
   const [banTarget, setBanTarget] = useState<{ userId: string; username: string } | null>(null);
   const [banReason, setBanReason] = useState('');
+  const [timeoutTarget, setTimeoutTarget] = useState<string | null>(null);
+  const [timeoutDuration, setTimeoutDuration] = useState(60);
 
   // Invites state
   const [invites, setInvites] = useState<InviteData[]>([]);
@@ -181,6 +187,8 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   // Audit log state
   const [auditLog, setAuditLog] = useState<AuditLogEntry[]>([]);
   const [auditLoading, setAuditLoading] = useState(false);
+  const [auditFilterAction, setAuditFilterAction] = useState('');
+  const [auditFilterUser, setAuditFilterUser] = useState('');
 
   // Channel settings state
   const [selectedChannel, setSelectedChannel] = useState<Channel | null>(null);
@@ -238,12 +246,27 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
     if (!name.trim()) return;
     setLoading(true); setError(''); setSuccess('');
     try {
-      const updated = await api.patch<Guild>(`/api/v1/guilds/${guildId}`, { name: name.trim() });
+      const updated = await api.patch<Guild>(`/api/v1/guilds/${guildId}`, {
+        name: name.trim(),
+        description: description || null,
+        afkChannelId: afkChannelId || null,
+        afkTimeout: Number(afkTimeout),
+        verificationLevel: Number(verificationLevel),
+      });
       updateGuild(guildId, updated);
       setSuccess('Server settings saved!');
       setTimeout(() => setSuccess(''), 3000);
     } catch (e: any) { setError(e.message || 'Failed to save settings'); }
     finally { setLoading(false); }
+  };
+
+  const handleTimeout = async (userId: string, minutes: number) => {
+    const until = minutes > 0 ? new Date(Date.now() + minutes * 60 * 1000).toISOString() : null;
+    try {
+      await api.patch(`/api/v1/guilds/${guildId}/members/${userId}`, { communicationDisabledUntil: until });
+      setMembers(prev => prev.map(m => m.user.id === userId ? { ...m, communicationDisabledUntil: until } as any : m));
+      setTimeoutTarget(null);
+    } catch (e: any) { setError(e.message || 'Failed to timeout member'); }
   };
 
   const handleDelete = async () => {
@@ -583,10 +606,66 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
 
               <Input label="SERVER NAME" value={name} onChange={e => setName(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSave()} />
 
+              <div>
+                <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Server Description</label>
+                <textarea
+                  className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none resize-none"
+                  rows={3}
+                  placeholder="Tell people what your server is about"
+                  value={description}
+                  onChange={e => setDescription(e.target.value)}
+                  maxLength={120}
+                />
+                <p className="text-text-muted text-xs mt-0.5 text-right">{description.length}/120</p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">AFK Channel</label>
+                  <select
+                    className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                    value={afkChannelId}
+                    onChange={e => setAfkChannelId(e.target.value)}
+                  >
+                    <option value="">No AFK Channel</option>
+                    {channels.filter(c => c.type === ChannelType.GUILD_VOICE).map(c => (
+                      <option key={c.id} value={c.id}>🔊 {c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">AFK Timeout</label>
+                  <select
+                    className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                    value={afkTimeout}
+                    onChange={e => setAfkTimeout(Number(e.target.value))}
+                  >
+                    {[[60,'1 minute'],[300,'5 minutes'],[900,'15 minutes'],[1800,'30 minutes'],[3600,'1 hour']].map(([v,l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-semibold text-text-muted uppercase tracking-wide block mb-1">Verification Level</label>
+                <select
+                  className="w-full bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                  value={verificationLevel}
+                  onChange={e => setVerificationLevel(Number(e.target.value))}
+                >
+                  <option value={0}>None — Unrestricted</option>
+                  <option value={1}>Low — Must have verified email</option>
+                  <option value={2}>Medium — Registered for 5 minutes</option>
+                  <option value={3}>High — Member for 10 minutes</option>
+                  <option value={4}>Highest — Must have verified phone</option>
+                </select>
+              </div>
+
               {error && <p className="text-danger text-sm">{error}</p>}
               {success && <p className="text-success text-sm">{success}</p>}
 
-              <Button onClick={handleSave} loading={loading} disabled={!name.trim() || name === guild.name}>
+              <Button onClick={handleSave} loading={loading} disabled={!name.trim()}>
                 Save Changes
               </Button>
 
@@ -973,6 +1052,26 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
           {/* ── MEMBERS ── */}
           {section === 'members' && (
             <div className="space-y-3">
+              {/* Timeout dialog */}
+              {timeoutTarget && (
+                <div className="bg-bg-tertiary border border-brand/30 rounded-lg p-4 space-y-3">
+                  <p className="text-text-header font-semibold text-sm">Timeout Member</p>
+                  <select
+                    className="w-full bg-bg-primary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                    value={timeoutDuration}
+                    onChange={e => setTimeoutDuration(Number(e.target.value))}
+                  >
+                    {[[60,'1 minute'],[300,'5 minutes'],[600,'10 minutes'],[1800,'30 minutes'],[3600,'1 hour'],[86400,'1 day'],[604800,'1 week']].map(([v,l]) => (
+                      <option key={v} value={v}>{l}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <Button onClick={() => handleTimeout(timeoutTarget, timeoutDuration)}>Apply Timeout</Button>
+                    <button className="text-sm text-text-muted hover:text-text-header" onClick={() => setTimeoutTarget(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
               {/* Ban confirmation dialog */}
               {banTarget && (
                 <div className="bg-danger/10 border border-danger/30 rounded-lg p-4 space-y-3">
@@ -1072,6 +1171,13 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                             <UserX size={13} /> Kick
                           </button>
                           <button
+                            className="flex items-center gap-1 text-xs text-text-muted hover:text-warning hover:bg-warning/10 px-2 py-1 rounded transition-colors"
+                            onClick={() => setTimeoutTarget(member.user.id)}
+                            title="Timeout (communication disabled)"
+                          >
+                            ⏱ Timeout
+                          </button>
+                          <button
                             className="flex items-center gap-1 text-xs text-text-muted hover:text-danger hover:bg-danger/10 px-2 py-1 rounded transition-colors"
                             onClick={() => { setBanTarget({ userId: member.user.id, username: member.user.username }); setBanReason(''); }}
                           >
@@ -1158,6 +1264,29 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
           {/* ── AUDIT LOG ── */}
           {section === 'audit-log' && (
             <div className="space-y-3">
+              {/* Filters */}
+              <div className="flex gap-2">
+                <input
+                  className="flex-1 bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                  placeholder="Filter by action (e.g. BAN)"
+                  value={auditFilterAction}
+                  onChange={e => setAuditFilterAction(e.target.value)}
+                />
+                <input
+                  className="flex-1 bg-bg-tertiary text-text-normal rounded px-3 py-2 text-sm border-2 border-transparent focus:border-brand outline-none"
+                  placeholder="Filter by username"
+                  value={auditFilterUser}
+                  onChange={e => setAuditFilterUser(e.target.value)}
+                />
+                {(auditFilterAction || auditFilterUser) && (
+                  <button
+                    onClick={() => { setAuditFilterAction(''); setAuditFilterUser(''); }}
+                    className="px-2 text-text-muted hover:text-text-header transition-colors"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
               {auditLoading ? (
                 <p className="text-text-muted text-sm">Loading audit log...</p>
               ) : auditLog.length === 0 ? (
@@ -1165,27 +1294,36 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
                   <FileText size={32} className="text-text-muted mx-auto mb-2" />
                   <p className="text-text-muted text-sm">No audit log entries yet.</p>
                 </div>
-              ) : (
-                <div className="space-y-1">
-                  {auditLog.map(entry => (
-                    <div key={entry.id} className="flex items-start gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="text-text-header text-sm font-medium">{formatAuditAction(entry.actionType)}</span>
-                          {entry.targetId && (
-                            <span className="text-text-muted text-xs font-mono truncate">→ {entry.targetId}</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2 mt-0.5">
-                          {entry.user && <span className="text-text-muted text-xs">by {entry.user.username}</span>}
-                          {entry.reason && <span className="text-text-muted text-xs">· "{entry.reason}"</span>}
-                          <span className="text-text-muted text-xs ml-auto">{formatDate(entry.createdAt)}</span>
+              ) : (() => {
+                const filtered = auditLog.filter(e => {
+                  const matchAction = !auditFilterAction || e.actionType.toLowerCase().includes(auditFilterAction.toLowerCase());
+                  const matchUser = !auditFilterUser || (e.user?.username || '').toLowerCase().includes(auditFilterUser.toLowerCase());
+                  return matchAction && matchUser;
+                });
+                return filtered.length === 0 ? (
+                  <p className="text-text-muted text-sm text-center py-8">No entries match your filters.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {filtered.map(entry => (
+                      <div key={entry.id} className="flex items-start gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="text-text-header text-sm font-medium">{formatAuditAction(entry.actionType)}</span>
+                            {entry.targetId && (
+                              <span className="text-text-muted text-xs font-mono truncate">→ {entry.targetId}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5">
+                            {entry.user && <span className="text-text-muted text-xs">by {entry.user.username}</span>}
+                            {entry.reason && <span className="text-text-muted text-xs">· "{entry.reason}"</span>}
+                            <span className="text-text-muted text-xs ml-auto">{formatDate(entry.createdAt)}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                );
+              })()}
             </div>
           )}
 
