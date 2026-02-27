@@ -8,21 +8,25 @@ import type { Channel } from '@freecord/types'
 
 const API_URL = () => import.meta.env.VITE_API_URL || 'http://localhost:3000'
 
+let _preloading = false
+
 /** Preload guilds + their channels from REST API so the sidebar works even if READY is slow. */
 async function preloadGuildsAndChannels() {
+  if (_preloading) return
+  _preloading = true
   try {
     const guilds = await api.get<any[]>('/api/v1/users/@me/guilds')
     if (!guilds?.length) return
     useGuildsStore.getState().setGuilds(guilds)
-    // Fetch channels for all guilds in parallel
-    await Promise.all(
-      guilds.map(g =>
-        api.get<Channel[]>(`/api/v1/guilds/${g.id}/channels`)
-          .then(channels => { if (channels?.length) useChannelsStore.getState().setGuildChannels(g.id, channels) })
-          .catch(() => {})
-      )
-    )
-  } catch {}
+    // Fetch channels for all guilds sequentially to avoid flooding the API
+    for (const g of guilds) {
+      await api.get<Channel[]>(`/api/v1/guilds/${g.id}/channels`)
+        .then(channels => { if (channels?.length) useChannelsStore.getState().setGuildChannels(g.id, channels) })
+        .catch(() => {})
+    }
+  } catch {} finally {
+    _preloading = false
+  }
 }
 
 /** Register a handler so the gateway can silently refresh an expired access token. */

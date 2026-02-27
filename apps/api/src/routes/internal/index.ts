@@ -12,8 +12,8 @@ export default async function internalRoutes(app: FastifyInstance) {
     }
   })
 
-  // Get user ready data (for gateway IDENTIFY)
-  app.get('/users/@me/ready', async (request, reply) => {
+  // Get user ready data (for gateway IDENTIFY) — exempt from rate limiting
+  app.get('/users/@me/ready', { config: { rateLimit: false } }, async (request, reply) => {
     const userId = request.headers['x-user-id'] as string
     if (!userId) return reply.status(400).send({ code: 400, message: 'Missing user ID' })
 

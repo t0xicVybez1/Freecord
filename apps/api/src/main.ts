@@ -26,8 +26,9 @@ async function build() {
     parseOptions: {},
   })
   await app.register(rateLimit, {
-    max: 100,
+    max: 500,
     timeWindow: '1 minute',
+    allowList: ['127.0.0.1', '::1', '::ffff:127.0.0.1'],
     errorResponseBuilder: () => ({
       code: 429,
       message: 'You are being rate limited.',
