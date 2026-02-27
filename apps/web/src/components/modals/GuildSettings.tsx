@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Settings, Shield, Users, Hash, Globe, Trash2, X, Copy, Check, UserX, Ban } from 'lucide-react';
+import { Settings, Shield, Users, Hash, Globe, Trash2, X, Copy, Check, UserX, Ban, Plus } from 'lucide-react';
 import { Button } from '../ui/Button';
 import { Input } from '../ui/Input';
 import { Avatar } from '../ui/Avatar';
@@ -9,8 +9,47 @@ import { useChannelsStore } from '../../stores/channels';
 import { useShallow } from 'zustand/react/shallow';
 import { api } from '../../lib/api';
 import { useNavigate } from 'react-router-dom';
-import type { Guild, GuildMember, GuildBan } from '@freecord/types';
+import type { Guild, GuildMember, GuildBan, Role } from '@freecord/types';
 import { ChannelType } from '@freecord/types';
+
+const PERMISSION_GROUPS: { label: string; perms: { key: string; label: string; bit: bigint }[] }[] = [
+  { label: 'General', perms: [
+    { key: 'ADMINISTRATOR', label: 'Administrator', bit: 1n << 3n },
+    { key: 'MANAGE_GUILD', label: 'Manage Server', bit: 1n << 5n },
+    { key: 'MANAGE_CHANNELS', label: 'Manage Channels', bit: 1n << 4n },
+    { key: 'MANAGE_ROLES', label: 'Manage Roles', bit: 1n << 28n },
+    { key: 'VIEW_AUDIT_LOG', label: 'View Audit Log', bit: 1n << 7n },
+    { key: 'CREATE_INSTANT_INVITE', label: 'Create Invites', bit: 1n << 0n },
+  ]},
+  { label: 'Members', perms: [
+    { key: 'KICK_MEMBERS', label: 'Kick Members', bit: 1n << 1n },
+    { key: 'BAN_MEMBERS', label: 'Ban Members', bit: 1n << 2n },
+    { key: 'MANAGE_NICKNAMES', label: 'Manage Nicknames', bit: 1n << 27n },
+    { key: 'CHANGE_NICKNAME', label: 'Change Own Nickname', bit: 1n << 26n },
+  ]},
+  { label: 'Text Channels', perms: [
+    { key: 'VIEW_CHANNEL', label: 'View Channels', bit: 1n << 10n },
+    { key: 'SEND_MESSAGES', label: 'Send Messages', bit: 1n << 11n },
+    { key: 'MANAGE_MESSAGES', label: 'Manage Messages', bit: 1n << 13n },
+    { key: 'EMBED_LINKS', label: 'Embed Links', bit: 1n << 14n },
+    { key: 'ATTACH_FILES', label: 'Attach Files', bit: 1n << 15n },
+    { key: 'READ_MESSAGE_HISTORY', label: 'Read Message History', bit: 1n << 16n },
+    { key: 'MENTION_EVERYONE', label: 'Mention Everyone', bit: 1n << 17n },
+    { key: 'ADD_REACTIONS', label: 'Add Reactions', bit: 1n << 6n },
+  ]},
+  { label: 'Voice Channels', perms: [
+    { key: 'CONNECT', label: 'Connect', bit: 1n << 20n },
+    { key: 'SPEAK', label: 'Speak', bit: 1n << 21n },
+    { key: 'STREAM', label: 'Video/Stream', bit: 1n << 9n },
+    { key: 'MUTE_MEMBERS', label: 'Mute Members', bit: 1n << 22n },
+    { key: 'DEAFEN_MEMBERS', label: 'Deafen Members', bit: 1n << 23n },
+    { key: 'MOVE_MEMBERS', label: 'Move Members', bit: 1n << 24n },
+  ]},
+];
+
+function colorToHex(color: number): string {
+  return color ? `#${color.toString(16).padStart(6, '0')}` : '#99aab5';
+}
 
 interface GuildSettingsProps {
   guildId: string;
@@ -68,6 +107,15 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   // Bans state
   const [bans, setBans] = useState<GuildBan[]>([]);
   const [bansLoading, setBansLoading] = useState(false);
+
+  // Roles edit state
+  const [selectedRole, setSelectedRole] = useState<Role | null>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState(0);
+  const [editPerms, setEditPerms] = useState('0');
+  const [editHoist, setEditHoist] = useState(false);
+  const [editMentionable, setEditMentionable] = useState(false);
+  const [roleSaving, setRoleSaving] = useState(false);
 
   if (!guild) return null;
 
@@ -191,6 +239,73 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
       setBans(prev => prev.filter(b => b.user.id !== userId));
     } catch (e: any) {
       setError(e.message || 'Failed to unban user');
+    }
+  };
+
+  const selectRole = (role: Role) => {
+    setSelectedRole(role);
+    setEditName(role.name);
+    setEditColor(role.color);
+    setEditPerms(role.permissions);
+    setEditHoist(role.hoist);
+    setEditMentionable(role.mentionable);
+  };
+
+  const hasPermBit = (perms: string, bit: bigint) => {
+    const bits = BigInt(perms || '0');
+    return (bits & bit) === bit;
+  };
+
+  const togglePermBit = (bit: bigint) => {
+    const bits = BigInt(editPerms || '0');
+    const newBits = (bits & bit) === bit ? bits & ~bit : bits | bit;
+    setEditPerms(newBits.toString());
+  };
+
+  const handleCreateRole = async () => {
+    setRoleSaving(true);
+    try {
+      const role = await api.post<Role>(`/api/v1/guilds/${guildId}/roles`, { name: 'new role' });
+      updateGuild(guildId, { roles: [...guild.roles, role] });
+      selectRole(role);
+    } catch (e: any) {
+      setError(e.message || 'Failed to create role');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const handleSaveRole = async () => {
+    if (!selectedRole) return;
+    setRoleSaving(true);
+    try {
+      const updated = await api.patch<Role>(`/api/v1/guilds/${guildId}/roles/${selectedRole.id}`, {
+        name: editName || undefined,
+        color: editColor,
+        permissions: editPerms,
+        hoist: editHoist,
+        mentionable: editMentionable,
+      });
+      updateGuild(guildId, { roles: guild.roles.map(r => r.id === updated.id ? updated : r) });
+      setSelectedRole(updated);
+    } catch (e: any) {
+      setError(e.message || 'Failed to save role');
+    } finally {
+      setRoleSaving(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    if (!selectedRole || selectedRole.name === '@everyone') return;
+    setRoleSaving(true);
+    try {
+      await api.delete(`/api/v1/guilds/${guildId}/roles/${selectedRole.id}`);
+      updateGuild(guildId, { roles: guild.roles.filter(r => r.id !== selectedRole.id) });
+      setSelectedRole(null);
+    } catch (e: any) {
+      setError(e.message || 'Failed to delete role');
+    } finally {
+      setRoleSaving(false);
     }
   };
 
@@ -338,29 +453,124 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
           )}
 
           {section === 'roles' && (
-            <div className="space-y-3">
-              <p className="text-text-muted text-xs uppercase tracking-wide font-semibold">
-                {guild.roles.length} Roles
-              </p>
-              {guild.roles.length === 0 ? (
-                <p className="text-text-muted text-sm">No roles yet.</p>
-              ) : (
-                guild.roles
-                  .slice()
-                  .sort((a, b) => b.position - a.position)
-                  .map(role => (
-                    <div key={role.id} className="flex items-center gap-3 bg-bg-tertiary rounded-lg px-4 py-3">
-                      <div
-                        className="w-4 h-4 rounded-full flex-shrink-0"
-                        style={{ backgroundColor: role.color ? `#${role.color.toString(16).padStart(6, '0')}` : '#99aab5' }}
-                      />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-text-header text-sm font-medium truncate">{role.name}</p>
-                        {role.hoist && <p className="text-text-muted text-xs">Displayed separately</p>}
+            <div className="flex gap-4" style={{ minHeight: 480 }}>
+              {/* Role list */}
+              <div className="w-44 flex-shrink-0 flex flex-col bg-bg-tertiary rounded-lg overflow-hidden">
+                {isOwner && (
+                  <button
+                    className="flex items-center gap-2 px-3 py-2.5 text-sm text-brand hover:bg-brand/10 transition-colors border-b border-black/20 font-medium"
+                    onClick={handleCreateRole}
+                  >
+                    <Plus size={14} /> Create Role
+                  </button>
+                )}
+                <div className="flex-1 overflow-y-auto p-1.5 space-y-0.5">
+                  {guild.roles.slice().sort((a, b) => b.position - a.position).map(role => (
+                    <button
+                      key={role.id}
+                      onClick={() => selectRole(role)}
+                      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-sm text-left transition-colors truncate ${
+                        selectedRole?.id === role.id
+                          ? 'bg-brand/20 text-white'
+                          : 'text-text-muted hover:bg-white/[0.06] hover:text-text-header'
+                      }`}
+                    >
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ backgroundColor: colorToHex(role.color) }} />
+                      <span className="truncate">{role.name}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Role editor */}
+              <div className="flex-1 overflow-y-auto">
+                {selectedRole ? (
+                  <div className="space-y-5">
+                    {/* Name + Color row */}
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1">
+                        <Input
+                          label="ROLE NAME"
+                          value={editName}
+                          onChange={e => setEditName(e.target.value)}
+                          disabled={selectedRole.name === '@everyone'}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-text-muted uppercase tracking-wide">Color</label>
+                        <input
+                          type="color"
+                          value={colorToHex(editColor)}
+                          onChange={e => setEditColor(parseInt(e.target.value.replace('#', ''), 16))}
+                          className="w-10 h-10 rounded cursor-pointer border-0 bg-transparent"
+                        />
                       </div>
                     </div>
-                  ))
-              )}
+
+                    {/* Toggles */}
+                    <div className="flex gap-6">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editHoist} onChange={e => setEditHoist(e.target.checked)}
+                          className="rounded" />
+                        <span className="text-sm text-text-header">Display separately</span>
+                      </label>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={editMentionable} onChange={e => setEditMentionable(e.target.checked)}
+                          className="rounded" />
+                        <span className="text-sm text-text-header">Mentionable</span>
+                      </label>
+                    </div>
+
+                    {/* Permissions */}
+                    <div>
+                      <p className="text-xs font-semibold text-text-muted uppercase tracking-wide mb-3">Permissions</p>
+                      <div className="space-y-4">
+                        {PERMISSION_GROUPS.map(group => (
+                          <div key={group.label}>
+                            <p className="text-xs text-text-muted font-medium mb-1.5">{group.label}</p>
+                            <div className="space-y-1">
+                              {group.perms.map(perm => (
+                                <label key={perm.key} className="flex items-center gap-2 cursor-pointer group/perm">
+                                  <input
+                                    type="checkbox"
+                                    checked={hasPermBit(editPerms, perm.bit)}
+                                    onChange={() => togglePermBit(perm.bit)}
+                                    className="rounded"
+                                  />
+                                  <span className="text-sm text-text-header group-hover/perm:text-white transition-colors">{perm.label}</span>
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {error && <p className="text-danger text-sm">{error}</p>}
+
+                    <div className="flex gap-2 pb-4">
+                      {isOwner && (
+                        <Button onClick={handleSaveRole} loading={roleSaving}>Save Changes</Button>
+                      )}
+                      {isOwner && selectedRole.name !== '@everyone' && (
+                        <Button variant="danger" onClick={handleDeleteRole} loading={roleSaving}>
+                          <Trash2 size={14} className="mr-1" /> Delete Role
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-2 text-center">
+                    <Shield size={32} className="text-text-muted" />
+                    <p className="text-text-muted text-sm">Select a role to edit</p>
+                    {isOwner && (
+                      <button className="text-brand text-sm hover:underline" onClick={handleCreateRole}>
+                        or create a new one
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
