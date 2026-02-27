@@ -23,11 +23,7 @@ const renderer = new marked.Renderer()
 
 // Spoiler tags: ||text||
 renderer.text = (token) => {
-  if (typeof token === 'string') {
-    return token.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>')
-  }
-  const text = typeof token === 'object' ? token.text : token
-  return text.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>')
+  return token.text.replace(/\|\|(.+?)\|\|/g, '<span class="spoiler">$1</span>')
 }
 
 marked.use({ renderer })
