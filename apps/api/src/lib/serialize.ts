@@ -6,6 +6,7 @@ export function serializeUser(user: User & { isStaff?: boolean }, isSelf = false
     id: user.id,
     username: user.username,
     discriminator: user.discriminator,
+    displayName: (user as any).displayName ?? null,
     avatar: user.avatar,
     banner: user.banner,
     bio: user.bio,
