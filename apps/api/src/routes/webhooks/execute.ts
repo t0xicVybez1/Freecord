@@ -35,7 +35,7 @@ export default async function webhookRoutes(app: FastifyInstance) {
         channelId: webhook.channelId,
         webhookId: webhook.id,
         content: body.content || '',
-        embeds: body.embeds || [],
+        embeds: (body.embeds || []) as any,
         tts: body.tts || false,
       },
     })

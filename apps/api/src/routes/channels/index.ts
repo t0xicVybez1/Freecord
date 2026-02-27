@@ -282,7 +282,7 @@ export default async function channelRoutes(app: FastifyInstance) {
         content,
         type: messageType as any,
         tts: body.tts ?? false,
-        embeds: body.embeds ?? [],
+        embeds: (body.embeds ?? []) as any,
         attachments: body.attachments ?? [],
         mentionEveryone,
         mentions: userMentions,
@@ -352,7 +352,7 @@ export default async function channelRoutes(app: FastifyInstance) {
       where: { id: messageId },
       data: {
         content: content ?? message.content,
-        embeds: embeds ?? message.embeds,
+        embeds: (embeds ?? message.embeds) as any,
         flags: flags ?? message.flags,
         editedAt: new Date(),
       },

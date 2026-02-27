@@ -6,7 +6,7 @@ import { prisma } from '../../lib/prisma.js'
 import { generateId } from '@freecord/snowflake'
 import { serializeUser } from '../../lib/serialize.js'
 import { authenticate } from '../../middleware/authenticate.js'
-import { totp } from 'otplib'
+import { totp, authenticator } from 'otplib'
 import qrcode from 'qrcode'
 
 const registerSchema = z.object({
@@ -159,7 +159,7 @@ export default async function authRoutes(app: FastifyInstance) {
       return reply.status(400).send({ code: 400, message: '2FA already enabled' })
     }
 
-    const secret = totp.generateSecret()
+    const secret = authenticator.generateSecret()
     const otpauth = totp.keyuri(user.email, 'FreeCord', secret)
     const qrUrl = await qrcode.toDataURL(otpauth)
 

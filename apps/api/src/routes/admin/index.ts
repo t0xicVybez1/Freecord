@@ -207,7 +207,7 @@ export default async function adminRoutes(app: FastifyInstance) {
       where: { id: guildId },
       include: {
         owner: true,
-        _count: { select: { members: true, channels: true, messages: false } },
+        _count: { select: { members: true, channels: true } },
         channels: { take: 50, orderBy: { position: 'asc' } },
       },
     })

@@ -55,7 +55,7 @@ async function build() {
   await app.register(import('./routes/admin/index.js'), { prefix: '/api/v1/admin' })
 
   // Error handler
-  app.setErrorHandler((error, request, reply) => {
+  app.setErrorHandler((error: Error & { statusCode?: number }, request, reply) => {
     logger.error({ err: error, url: request.url }, 'Request error')
     if (error.statusCode) {
       reply.status(error.statusCode).send({ code: error.statusCode, message: error.message })

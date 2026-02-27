@@ -467,7 +467,7 @@ export default async function guildRoutes(app: FastifyInstance) {
         bitrate: body.bitrate,
         userLimit: body.userLimit,
         rtcRegion: body.rtcRegion,
-        permissionOverwrites: body.permissionOverwrites ?? [],
+        permissionOverwrites: (body.permissionOverwrites ?? []) as any,
       },
     })
 
