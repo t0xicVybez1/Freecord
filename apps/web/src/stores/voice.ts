@@ -16,8 +16,8 @@ interface VoiceStoreState {
   leaveChannel: () => Promise<void>
   setSelfMute: (muted: boolean) => void
   setSelfDeaf: (deafened: boolean) => void
-  setSelfVideo: (video: boolean) => void
-  setSelfStream: (stream: boolean) => void
+  setSelfVideo: (video: boolean) => Promise<void>
+  setSelfStream: (stream: boolean) => Promise<void>
   setVoiceState: (userId: string, state: Partial<VoiceState>) => void
   clearVoiceState: (userId: string) => void
 }
@@ -68,8 +68,25 @@ export const useVoiceStore = create<VoiceStoreState>((set, get) => ({
     if (channelId) gateway.updateVoiceState(guildId, channelId, deafened || get().selfMute, deafened)
   },
 
-  setSelfVideo: (video) => { set({ selfVideo: video }) },
-  setSelfStream: (stream) => { set({ selfStream: stream }) },
+  setSelfVideo: async (video) => {
+    if (video) {
+      const stream = await voiceClient.startVideo().catch(() => null)
+      if (!stream) return // permission denied or not in channel
+    } else {
+      voiceClient.stopVideo()
+    }
+    set({ selfVideo: video })
+  },
+
+  setSelfStream: async (stream) => {
+    if (stream) {
+      const mediaStream = await voiceClient.startScreenShare().catch(() => null)
+      if (!mediaStream) return // user cancelled picker or not in channel
+    } else {
+      voiceClient.stopVideo()
+    }
+    set({ selfStream: stream })
+  },
 
   setVoiceState: (userId, state) => set(s => ({
     voiceStates: { ...s.voiceStates, [userId]: { ...s.voiceStates[userId], ...state } as VoiceState },

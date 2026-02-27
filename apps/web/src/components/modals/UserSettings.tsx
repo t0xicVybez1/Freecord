@@ -110,14 +110,18 @@ export function UserSettingsModal({ onClose }: UserSettingsProps) {
       .finally(() => setBlockedLoading(false));
   }, [section]);
 
-  // Load media devices when voice tab opens
+  // Load media devices when voice tab opens — must request permission first or labels will be empty
   useEffect(() => {
     if (section !== 'voice') return;
-    navigator.mediaDevices?.enumerateDevices().then(devices => {
+    const load = async () => {
+      // Request mic permission so browser exposes device labels
+      try { const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); s.getTracks().forEach(t => t.stop()) } catch {}
+      const devices = await navigator.mediaDevices.enumerateDevices().catch(() => [] as MediaDeviceInfo[]);
       setInputDevices(devices.filter(d => d.kind === 'audioinput'));
       setOutputDevices(devices.filter(d => d.kind === 'audiooutput'));
       setVideoDevices(devices.filter(d => d.kind === 'videoinput'));
-    }).catch(() => {});
+    };
+    load();
   }, [section]);
 
   const handleSaveAccount = async () => {
