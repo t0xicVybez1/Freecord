@@ -316,7 +316,7 @@ export function MessageInput({
           <span>
             Replying to{' '}
             <span className="font-medium text-text-header">
-              {replyTo.author.displayName || replyTo.author.username}
+              {replyTo.author?.displayName || replyTo.author?.username}
             </span>
           </span>
           <button onClick={onClearReply} className="hover:text-text-header transition-colors text-lg leading-none">×</button>

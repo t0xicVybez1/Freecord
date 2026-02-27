@@ -54,10 +54,10 @@ export function PinnedMessagesPanel({ channelId, onClose }: PinnedMessagesPanelP
         {pins.map(msg => (
           <div key={msg.id} className="px-3 py-3 border-b border-black/10 group hover:bg-white/[0.03] transition-colors">
             <div className="flex items-start gap-2 mb-2">
-              <Avatar userId={msg.author.id} username={msg.author.username} avatarHash={msg.author.avatar} size={28} />
+              <Avatar userId={msg.author?.id ?? ''} username={msg.author?.username ?? ''} avatarHash={msg.author?.avatar ?? null} size={28} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-baseline gap-1.5">
-                  <span className="text-xs font-medium text-text-header">{msg.author.displayName || msg.author.username}</span>
+                  <span className="text-xs font-medium text-text-header">{msg.author?.displayName || msg.author?.username}</span>
                   <span className="text-[10px] text-text-muted">{formatMessageDate(new Date(msg.createdAt))}</span>
                 </div>
                 <div

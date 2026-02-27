@@ -1,6 +1,6 @@
 import { GatewayOpcode } from '@freecord/types'
 
-type EventHandler = (data: unknown) => void
+type EventHandler = (data: any) => void
 
 export class GatewayClient {
   private ws: WebSocket | null = null

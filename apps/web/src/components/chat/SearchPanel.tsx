@@ -87,10 +87,10 @@ export function SearchPanel({ channelId, channelName, onClose, onJumpTo }: Searc
                 onClick={() => { onJumpTo(msg.id); onClose(); }}
               >
                 <div className="flex items-start gap-2">
-                  <Avatar userId={msg.author.id} username={msg.author.username} avatarHash={msg.author.avatar} size={28} />
+                  <Avatar userId={msg.author?.id ?? ''} username={msg.author?.username ?? ''} avatarHash={msg.author?.avatar ?? null} size={28} />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-1.5 mb-0.5">
-                      <span className="text-xs font-medium text-text-header truncate">{msg.author.username}</span>
+                      <span className="text-xs font-medium text-text-header truncate">{msg.author?.username}</span>
                       <span className="text-[10px] text-text-muted flex-shrink-0">{formatMessageDate(new Date(msg.createdAt))}</span>
                     </div>
                     <div

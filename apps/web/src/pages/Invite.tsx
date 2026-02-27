@@ -85,7 +85,7 @@ export default function InvitePage() {
         {/* Guild banner */}
         {guild?.banner && (
           <div className="h-24 rounded-t-lg overflow-hidden -mx-8 -mt-8 mb-0">
-            <img src={CDNUtils.guildBanner(guild.id, guild.banner)} alt="" className="w-full h-full object-cover" />
+            <img src={CDNUtils.guildBanner(guild.id!, guild.banner!)} alt="" className="w-full h-full object-cover" />
           </div>
         )}
 
@@ -96,7 +96,7 @@ export default function InvitePage() {
             style={{ backgroundColor: guild?.icon ? undefined : stringToColor(guild?.name || '') }}
           >
             {guild?.icon
-              ? <img src={CDNUtils.guildIcon(guild.id, guild.icon)} alt={guild.name} className="w-full h-full object-cover" />
+              ? <img src={CDNUtils.guildIcon(guild.id!, guild.icon!)} alt={guild.name} className="w-full h-full object-cover" />
               : getInitials(guild?.name || '?')
             }
           </div>

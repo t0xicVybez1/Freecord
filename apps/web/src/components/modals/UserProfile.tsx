@@ -21,7 +21,7 @@ export function UserProfileModal({ userId, onClose }: UserProfileProps) {
 
   const user = users[userId];
   const presence = presences[userId];
-  const relationship = relationships.find(r => r.userId === userId || r.targetId === userId);
+  const relationship = relationships.find(r => r.user.id === userId);
 
   if (!user) return null;
   const isSelf = me?.id === userId;

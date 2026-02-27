@@ -83,7 +83,6 @@ export function CreateChannelModal({ guildId, categoryId, onClose }: CreateChann
           onChange={e => setName(e.target.value)}
           placeholder={type === ChannelType.GUILD_TEXT ? 'new-channel' : 'New Voice Channel'}
           onKeyDown={e => e.key === 'Enter' && handleCreate()}
-          prefix={type === ChannelType.GUILD_TEXT ? <Hash size={16} className="text-text-muted" /> : <Volume2 size={16} className="text-text-muted" />}
         />
 
         <label className="flex items-start gap-3 cursor-pointer">

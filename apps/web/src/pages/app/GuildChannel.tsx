@@ -107,7 +107,7 @@ export default function GuildChannelPage() {
             {showSearch && (
               <SearchPanel
                 channelId={channelId}
-                channelName={channel.name}
+                channelName={channel.name || ''}
                 onClose={() => setShowSearch(false)}
                 onJumpTo={handleJumpTo}
               />

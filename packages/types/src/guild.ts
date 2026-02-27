@@ -19,6 +19,7 @@ export interface Guild {
   features: string[]
   large: boolean
   memberCount: number
+  approximateMemberCount?: number
   maxMembers: number
   channels?: import('./channel').Channel[]
   members?: GuildMember[]

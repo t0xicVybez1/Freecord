@@ -550,7 +550,7 @@ export function GuildSettingsModal({ guildId, onClose }: GuildSettingsProps) {
   // Channel settings handlers
   const selectChannel = (ch: Channel) => {
     setSelectedChannel(ch);
-    setChannelEdit({ name: ch.name, topic: ch.topic || '', nsfw: ch.nsfw || false, slowmode: ch.slowmode || 0, bitrate: ch.bitrate || 64000, userLimit: ch.userLimit || 0 });
+    setChannelEdit({ name: ch.name || '', topic: ch.topic || '', nsfw: ch.nsfw || false, slowmode: ch.slowmode || 0, bitrate: ch.bitrate || 64000, userLimit: ch.userLimit || 0 });
     setChannelTab('overview');
     // Load existing permission overwrites from channel data
     const existing: Record<string, { allow: bigint; deny: bigint }> = {};
