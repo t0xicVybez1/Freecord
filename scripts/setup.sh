@@ -291,7 +291,7 @@ ENVEOF
 install_dependencies() {
   log_step "Installing Node.js dependencies..."
   cd "$PROJECT_ROOT"
-  pnpm install --frozen-lockfile
+  pnpm install
   log_info "Dependencies installed"
 }
 
