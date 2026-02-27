@@ -52,7 +52,7 @@ export function useGateway() {
     }))
     off.push(gateway.on('USER_UPDATE', (d: User) => { updateUser(d as any); setUser(d) }))
     off.push(gateway.on('RELATIONSHIP_ADD', (d: Relationship) => addRelationship(d)))
-    off.push(gateway.on('RELATIONSHIP_REMOVE', (d: { id: string; type: string; user: User }) => removeRelationship(d.user.id)))
+    off.push(gateway.on('RELATIONSHIP_REMOVE', (d: { id: string; userId: string }) => removeRelationship(d.userId)))
 
     return () => off.forEach(fn => fn())
   }, [])

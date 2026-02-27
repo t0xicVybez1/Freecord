@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useChannelsStore } from '@/stores/channels'
 import { useGuildsStore } from '@/stores/guilds'
@@ -12,12 +13,14 @@ import { useVoiceStore } from '@/stores/voice'
 import { Hash, Volume2, Users, Bell, Pin, Search, Inbox, HelpCircle, Lock, Megaphone } from 'lucide-react'
 import { Tooltip } from '@/components/ui/Tooltip'
 import { ChannelType } from '@freecord/types'
+import type { Message } from '@freecord/types'
 
 export default function GuildChannelPage() {
   const { guildId, channelId } = useParams<{ guildId: string; channelId: string }>()
   const getChannel = useChannelsStore(s => s.getChannel)
   const getGuild = useGuildsStore(s => s.getGuild)
   const { activeMemberListPanel, toggleMemberList } = useUIStore()
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
   const currentVoiceId = useVoiceStore(s => s.channelId)
 
   const channel = channelId ? getChannel(channelId) : null
@@ -71,9 +74,9 @@ export default function GuildChannelPage() {
         {!isVoice && (
           <div className="flex flex-1 overflow-hidden min-w-0">
             <div className="flex flex-col flex-1 overflow-hidden min-w-0">
-              <MessageList channelId={channelId} />
+              <MessageList channelId={channelId} onReply={setReplyTo} />
               <TypingIndicator channelId={channelId} />
-              <MessageInput channelId={channelId} guildId={guildId} channelName={channel.name || 'channel'} />
+              <MessageInput channelId={channelId} channelName={channel.name || 'channel'} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
             </div>
             {activeMemberListPanel && guild && <MemberList guildId={guildId} />}
           </div>

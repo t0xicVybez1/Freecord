@@ -18,7 +18,7 @@ function DateSeparator({ date }: { date: Date }) {
   )
 }
 
-export function MessageList({ channelId }: { channelId: string }) {
+export function MessageList({ channelId, onReply }: { channelId: string; onReply?: (msg: Message) => void }) {
   const { getMessages, getChannelState, setMessages, prependMessages, setLoading } = useMessagesStore()
   const messages = getMessages(channelId)
   const state = getChannelState(channelId)
@@ -133,7 +133,7 @@ export function MessageList({ channelId }: { channelId: string }) {
           return (
             <div key={message.id}>
               {showDate && <DateSeparator date={new Date(message.createdAt)} />}
-              <MessageItem message={message} isGrouped={isGrouped} channelId={channelId} />
+              <MessageItem message={message} isGrouped={isGrouped} onReply={onReply ?? (() => {})} />
             </div>
           )
         })}

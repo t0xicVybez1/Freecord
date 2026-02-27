@@ -8,6 +8,7 @@ import FriendsPage from './pages/app/Friends'
 import GuildChannelPage from './pages/app/GuildChannel'
 import DirectMessagePage from './pages/app/DirectMessage'
 import HomePage from './pages/app/Home'
+import InvitePage from './pages/Invite'
 
 export const router = createBrowserRouter([
   {
@@ -23,6 +24,7 @@ export const router = createBrowserRouter([
           { path: ':dmChannelId', element: <DirectMessagePage /> },
         ],
       },
+      { path: 'channels/:guildId', element: <GuildChannelPage /> },
       { path: 'channels/:guildId/:channelId', element: <GuildChannelPage /> },
     ],
   },
@@ -36,4 +38,5 @@ export const router = createBrowserRouter([
     element: <AuthLayout />,
     children: [{ index: true, element: <RegisterPage /> }],
   },
+  { path: '/invite/:code', element: <InvitePage /> },
 ])

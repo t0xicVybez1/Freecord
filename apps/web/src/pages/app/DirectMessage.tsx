@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useChannelsStore } from '@/stores/channels'
 import { useAuthStore } from '@/stores/auth'
@@ -7,8 +8,10 @@ import { MessageInput } from '@/components/chat/MessageInput'
 import { TypingIndicator } from '@/components/chat/TypingIndicator'
 import { Avatar } from '@/components/ui/Avatar'
 import { ChannelType } from '@freecord/types'
+import type { Message } from '@freecord/types'
 
 export default function DirectMessagePage() {
+  const [replyTo, setReplyTo] = useState<Message | null>(null)
   const { dmChannelId } = useParams<{ dmChannelId: string }>()
   const getChannel = useChannelsStore(s => s.getChannel)
   const myId = useAuthStore(s => s.user?.id)
@@ -38,9 +41,9 @@ export default function DirectMessagePage() {
 
       {/* Messages */}
       <div className="flex flex-col flex-1 overflow-hidden">
-        <MessageList channelId={dmChannelId} />
+        <MessageList channelId={dmChannelId} onReply={setReplyTo} />
         <TypingIndicator channelId={dmChannelId} />
-        <MessageInput channelId={dmChannelId} channelName={name} />
+        <MessageInput channelId={dmChannelId} channelName={name} replyTo={replyTo} onClearReply={() => setReplyTo(null)} />
       </div>
     </div>
   )

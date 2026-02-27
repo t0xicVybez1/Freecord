@@ -43,7 +43,7 @@ export function MessageItem({ message, isGrouped, onReply }: MessageItemProps) {
         `/api/v1/channels/${message.channelId}/messages/${message.id}`,
         { content: editContent.trim() }
       );
-      updateMessage(message.channelId, updated);
+      updateMessage(message.channelId, updated.id, updated);
       setIsEditing(false);
     } catch {
       // revert on error
