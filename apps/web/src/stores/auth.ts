@@ -61,18 +61,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   isLoading: true,
 
   initialize: async () => {
+    // Guard against React StrictMode double-invoking this effect.
+    // refreshAccessToken() uses a shared refreshPromise so concurrent calls
+    // share one network request instead of racing two rotateSession() calls.
+    if (get().isAuthenticated) return
     set({ isLoading: true })
     try {
-      const r = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:3000'}/api/v1/auth/refresh`, { method: 'POST', credentials: 'include' })
-      if (r.ok) {
-        const data = await r.json()
-        setAccessToken(data.token)
+      const token = await refreshAccessToken()
+      if (token) {
         const [user, settings] = await Promise.all([
           api.get<PrivateUser>('/api/v1/users/@me'),
           api.get<UserSettings>('/api/v1/users/@me/settings').catch(() => null),
         ])
         set({ user, settings, isAuthenticated: true })
-        gateway.connect(data.token)
+        gateway.connect(token)
         setupTokenRefresh(set)
         preloadGuildsAndChannels()
       } else { set({ isAuthenticated: false }) }
